@@ -1,7 +1,6 @@
 use crate::{
     components::{
-        evaluate_component_expression, update_component_state, Component, ComponentDefParams,
-        Output,
+        evaluate_component_expression, update_component_state, ComponentDefParams, Gate, Output,
     },
     table::Table,
     types::{ComponentActor, COMPONENT_NOT_DEFINED, ID},
@@ -11,18 +10,18 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
 };
 
-pub struct Circuit {
+pub struct BCircuit {
     component_definitions: HashMap<String, ComponentDefParams>,
-    components: HashMap<ID, RefCell<Component>>,
+    components: HashMap<ID, RefCell<Gate>>,
     inputs: HashSet<String>,
     outputs: HashMap<String, Output>,
     last_id: ID,
     pub exec_queue: VecDeque<ID>,
 }
 
-impl Circuit {
-    pub fn new() -> Circuit {
-        let mut c = Circuit {
+impl BCircuit {
+    pub fn new() -> BCircuit {
+        let mut c = BCircuit {
             component_definitions: HashMap::new(),
             components: HashMap::new(),
             inputs: HashSet::new(),
@@ -68,19 +67,19 @@ impl Circuit {
             Err(e) => e,
         }
     }
-    pub fn get_component(&mut self, id: &ID) -> Option<&mut RefCell<Component>> {
+    pub fn get_component(&mut self, id: &ID) -> Option<&mut RefCell<Gate>> {
         return self.components.get_mut(id);
     }
-    fn make_component(&mut self, typ: &str) -> Result<Component, ID> {
+    fn make_component(&mut self, typ: &str) -> Result<Gate, ID> {
         let def = self.component_definitions.get(typ);
         if def.is_none() {
             return Err(COMPONENT_NOT_DEFINED);
         }
         let def = def.unwrap();
-        return Ok(Component::from_params(def));
+        return Ok(Gate::from_params(def));
     }
     pub fn register_input(&mut self, label: &str, init_val: bool) -> ID {
-        let mut inp = Component::make_input(label, init_val);
+        let mut inp = Gate::make_input(label, init_val);
         let id = self.new_id();
         inp.id = id;
         self.components.insert(id, RefCell::new(inp));
@@ -145,7 +144,7 @@ impl Circuit {
     }
 }
 
-fn define_common_gates(c: &mut Circuit) {
+fn define_common_gates(c: &mut BCircuit) {
     c.define_gate(ComponentDefParams {
         name: "NAND".to_string(),
         comp_type: 'g',

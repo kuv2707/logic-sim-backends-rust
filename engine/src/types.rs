@@ -3,10 +3,10 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
-use crate::components::Component;
+use crate::components::Gate;
 
 pub type BinaryLogicReducer = fn(&Vec<bool>) -> bool;
-pub type ComponentActor = fn(&mut Component, &HashMap<i32, RefCell<Component>>, &mut VecDeque<ID>);
+pub type ComponentActor = fn(&mut Gate, &HashMap<i32, RefCell<Gate>>, &mut VecDeque<ID>);
 
 pub type ID = i32;
 pub const COMPONENT_NOT_DEFINED: ID = -1;

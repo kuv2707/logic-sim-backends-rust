@@ -1,13 +1,13 @@
-use circuit::Circuit;
+use circuit::BCircuit;
 
 mod circuit;
 mod components;
-mod types;
 mod table;
+mod types;
 mod utils;
 
 fn main() {
-    let mut circuit = Circuit::new();
+    let mut circuit = BCircuit::new();
 
     let n1 = circuit.add_component("AND");
 
@@ -30,6 +30,9 @@ fn main() {
     println!("");
     circuit.run();
 
-    println!("{}", circuit.get_component(&n2).unwrap().borrow().state_expr);
+    println!(
+        "{}",
+        circuit.get_component(&n2).unwrap().borrow().state_expr
+    );
     println!("{}", circuit.state(n2).unwrap());
 }

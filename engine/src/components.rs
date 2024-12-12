@@ -17,7 +17,7 @@ pub struct ComponentDefParams {
     pub symbol: String,
 }
 
-pub struct Component {
+pub struct Gate {
     pub name: String,
     pub id: ID,
     eval: BinaryLogicReducer,
@@ -30,9 +30,9 @@ pub struct Component {
     pub state_expr: String,
 }
 
-impl Component {
-    pub fn from_params(p: &ComponentDefParams) -> Component {
-        let mut c = Component {
+impl Gate {
+    pub fn from_params(p: &ComponentDefParams) -> Gate {
+        let mut c = Gate {
             name: p.name.clone(),
             id: UNASSIGNED,
             eval: p.eval,
@@ -50,9 +50,9 @@ impl Component {
         }
         c
     }
-    pub fn make_input(lab: &str, init: bool) -> Component {
+    pub fn make_input(lab: &str, init: bool) -> Gate {
         // the eval function will not be called on input elements
-        let mut c = Component::from_params(&ComponentDefParams {
+        let mut c = Gate::from_params(&ComponentDefParams {
             name: String::from("Input"),
             eval: |_| true,
             default_inputs: 0,
@@ -80,8 +80,8 @@ impl Component {
 // if this component's state didn't change when updated, then it
 // will not schedule updates for its neighbours.
 pub fn update_component_state(
-    c: &mut Component,
-    mp: &HashMap<i32, RefCell<Component>>,
+    c: &mut Gate,
+    mp: &HashMap<i32, RefCell<Gate>>,
     exec_q: &mut VecDeque<ID>,
 ) {
     if !c.name.eq("Input") {
@@ -89,7 +89,7 @@ pub fn update_component_state(
         let new_state = (c.eval)(&c.in_pins);
         if new_state == old_state {
             // buggy optimization: all components should
-            // trigger updates to their neighbours at least 
+            // trigger updates to their neighbours at least
             // once. todo: think sth else
             // return;
         }
@@ -107,14 +107,13 @@ pub fn update_component_state(
         // in succession, we don't need to run update for each.
         // Just updating once suffices.
         exec_q.push_back(*id);
-        if exec_q.is_empty() || *exec_q.back().unwrap() != *id {
-        }
+        if exec_q.is_empty() || *exec_q.back().unwrap() != *id {}
     }
 }
 
 pub fn evaluate_component_expression(
-    c: &mut Component,
-    mp: &HashMap<i32, RefCell<Component>>,
+    c: &mut Gate,
+    mp: &HashMap<i32, RefCell<Gate>>,
     exec_q: &mut VecDeque<ID>,
 ) {
     if !c.name.eq("Input") {
@@ -141,7 +140,7 @@ pub fn evaluate_component_expression(
     }
 }
 
-impl fmt::Display for Component {
+impl fmt::Display for Gate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let state_str = if self.state {
             "\x1b[32mON\x1b[0m" // Green text for ON
