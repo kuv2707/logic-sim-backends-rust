@@ -1,6 +1,10 @@
 use crate::{
-    components::{Component, ComponentDefParams, Output},
-    types::{COMPONENT_NOT_DEFINED, ID},
+    components::{
+        evaluate_component_expression, update_component_state, Component, ComponentDefParams,
+        Output,
+    },
+    table::Table,
+    types::{ComponentActor, COMPONENT_NOT_DEFINED, ID},
 };
 use std::{
     cell::RefCell,
@@ -30,7 +34,11 @@ impl Circuit {
         c
     }
     pub fn run(&mut self) {
+        self.graph_act(update_component_state);
+    }
+    pub fn graph_act(&mut self, runnable: ComponentActor) {
         // traverse in breadth-first fashion, starting from inputs
+        // and calls the specified function on the components
         // todo: add clocked components (circuit states)
         for (id, c) in &self.components {
             if c.borrow().name.eq("Input") {
@@ -40,8 +48,8 @@ impl Circuit {
         while !self.exec_queue.is_empty() {
             let id = self.exec_queue.pop_front().unwrap();
             let mut k = self.components.get(&id).unwrap().borrow_mut();
-            println!("{}", k.name);
-            k.update(&self.components, &mut self.exec_queue);
+            // println!("acting on {}", k.name);
+            runnable(&mut k, &self.components, &mut self.exec_queue);
         }
     }
     pub fn define_gate(&mut self, p: ComponentDefParams) {
@@ -114,6 +122,16 @@ impl Circuit {
         self.outputs
             .insert(lab.to_string(), (comp_id, lab.to_string()));
         true
+    }
+    pub fn compile(&mut self) {
+        // 1. we generate boolean expression for each component
+        // in the circuit.
+        // 2. we check for dangerous loops.
+        // 3. we create input/output expression for each component
+        self.graph_act(evaluate_component_expression);
+    }
+    pub fn gen_truth_table(&self) -> Table {
+        todo!()
     }
     pub fn state(&self, id: ID) -> Option<bool> {
         match self.components.get(&id) {

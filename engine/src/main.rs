@@ -3,6 +3,8 @@ use circuit::Circuit;
 mod circuit;
 mod components;
 mod types;
+mod table;
+mod utils;
 
 fn main() {
     let mut circuit = Circuit::new();
@@ -24,7 +26,10 @@ fn main() {
     circuit.connect(n2, 2, not1).unwrap();
 
     circuit.track_output(n2, "Y");
+    circuit.compile();
+    println!("");
     circuit.run();
-    println!("{}", circuit.get_component(&n1).unwrap().borrow());
-    println!("{}", circuit.state(n1).unwrap());
+
+    println!("{}", circuit.get_component(&n2).unwrap().borrow().state_expr);
+    println!("{}", circuit.state(n2).unwrap());
 }
