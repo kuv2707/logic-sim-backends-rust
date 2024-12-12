@@ -81,7 +81,12 @@ impl Component {
             }
             let ele = ele.unwrap();
             ele.borrow_mut().set_pin_val(pin, self.state);
-            exec_q.push_back(*id);
+            // optimization to the exec_queue. If there are same id's
+            // in succession, we don't need to run update for each.
+            // Just updating once suffices.
+            if exec_q.is_empty() || *exec_q.back().unwrap() != *id {
+                exec_q.push_back(*id);
+            }
         }
     }
 }
