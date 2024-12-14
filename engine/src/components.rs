@@ -8,9 +8,10 @@ use crate::{
     types::{BinaryLogicReducer, ID, UNASSIGNED},
     utils::form_expr,
 };
-
+#[derive(Clone)]
 pub struct ComponentDefParams {
     pub name: String,
+    pub label: String,
     pub comp_type: char,
     pub eval: BinaryLogicReducer,
     pub default_inputs: u16,
@@ -20,6 +21,8 @@ pub struct ComponentDefParams {
 pub struct Gate {
     pub name: String,
     pub id: ID,
+    pub comp_type: char,
+    pub label: String,
     eval: BinaryLogicReducer,
     pub state: bool,
     output_notifylist: Vec<(ID, u16)>,
@@ -31,10 +34,12 @@ pub struct Gate {
 }
 
 impl Gate {
-    pub fn from_params(p: &ComponentDefParams) -> Gate {
+    pub fn from_params(p: ComponentDefParams) -> Gate {
         let mut c = Gate {
             name: p.name.clone(),
             id: UNASSIGNED,
+            comp_type: p.comp_type,
+            label: p.label.to_owned(),
             eval: p.eval,
             state: false,
             output_notifylist: Vec::new(),
@@ -52,11 +57,12 @@ impl Gate {
     }
     pub fn make_input(lab: &str, init: bool) -> Gate {
         // the eval function will not be called on input elements
-        let mut c = Gate::from_params(&ComponentDefParams {
+        let mut c = Gate::from_params(ComponentDefParams {
             name: String::from("Input"),
+            label: lab.to_owned(),
             eval: |_| true,
             default_inputs: 0,
-            symbol: lab.to_string(),
+            symbol: lab.to_owned(),
             comp_type: 'i',
         });
         c.state = init;
@@ -160,4 +166,3 @@ impl fmt::Display for Gate {
     }
 }
 
-pub type Output = (ID, String);
