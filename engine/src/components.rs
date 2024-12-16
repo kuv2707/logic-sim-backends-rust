@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{
+    clock_manager::ClockManager,
     types::{BinaryLogicReducer, ID, UNASSIGNED},
     utils::form_expr,
 };
@@ -21,7 +22,7 @@ pub struct ComponentDefParams {
 pub struct Gate {
     pub name: String,
     pub id: ID,
-    pub comp_type: char,
+    pub comp_type: char, // 'g' or 'm'
     pub label: String,
     eval: BinaryLogicReducer,
     pub state: bool,
@@ -31,6 +32,7 @@ pub struct Gate {
     in_pins: Vec<bool>,
     in_exprs: Vec<String>,
     pub state_expr: String,
+    pub clock_manager: Option<ClockManager>,
 }
 
 impl Gate {
@@ -43,15 +45,20 @@ impl Gate {
             eval: p.eval,
             state: false,
             output_notifylist: Vec::new(),
-            n_inp: p.default_inputs,
+            n_inp: p.default_inputs+2, // +2 if clocked elem - one for Q, and one for clk
             symbol: p.symbol.clone(),
-            in_pins: vec![false; p.default_inputs as usize],
-            in_exprs: vec![String::new(); p.default_inputs as usize],
+            in_pins: vec![false; p.default_inputs as usize + 2],
+            in_exprs: vec![String::new(); p.default_inputs as usize + 2],
             state_expr: String::new(),
+            clock_manager: None,
         };
         if c.n_inp > 0 {
             // not doing for inputs etc
             c.state = (c.eval)(&c.in_pins); // sound initial assumption
+        }
+        if c.comp_type == 'm' {
+            c.clock_manager = Some(ClockManager::new());
+            c.state_expr = p.label + "(t+1)"
         }
         c
     }
@@ -75,6 +82,14 @@ impl Gate {
 
     pub fn set_pin_val(&mut self, pin: &u16, val: bool) {
         self.in_pins[*pin as usize - 1] = val;
+        if *pin == (self.in_pins.len() as u16) {
+            match &mut self.clock_manager {
+                Some(k) => {
+                    // println!("trig {}",self.label);
+                    k.push(val)}
+                None => {}
+            }
+        }
     }
     pub fn set_pin_expr(&mut self, pin: &u16, val: String) {
         self.in_exprs[*pin as usize - 1] = val;
@@ -90,7 +105,7 @@ pub fn update_component_state(
     mp: &HashMap<i32, RefCell<Gate>>,
     exec_q: &mut VecDeque<ID>,
 ) {
-    if !c.name.eq("Input") {
+    if !c.name.eq("Input") && !(c.comp_type == 'm') {
         let old_state = c.state;
         let new_state = (c.eval)(&c.in_pins);
         if new_state == old_state {
@@ -101,14 +116,26 @@ pub fn update_component_state(
         }
         c.state = new_state;
     }
+    match &mut c.clock_manager {
+        Some(mag) => {
+            if mag.clock_triggered() {
+                mag.reset_clock_hist();
+                c.state = (c.eval)(&c.in_pins);
+                let output_in = c.in_pins.len() - 2;
+                c.in_pins[output_in] = c.state;
+            }
+        }
+        None => {}
+    }
     // println!("{} {} : {}",c.name, c.symbol, c.state);
     for (id, pin) in &c.output_notifylist {
         let ele = mp.get(id);
         if ele.is_none() {
             eprintln!("No element with id {}", id);
         }
-        let ele = ele.unwrap();
-        ele.borrow_mut().set_pin_val(pin, c.state);
+        let mut ele = ele.unwrap().borrow_mut();
+        // println!("from {} to {} {} : {}",c.label, ele.label, pin, c.state);
+        ele.set_pin_val(pin, c.state);
         // optimization to the exec_queue. If there are same id's
         // in succession, we don't need to run update for each.
         // Just updating once suffices.
@@ -122,7 +149,7 @@ pub fn evaluate_component_expression(
     mp: &HashMap<i32, RefCell<Gate>>,
     exec_q: &mut VecDeque<ID>,
 ) {
-    if !c.name.eq("Input") {
+    if !c.name.eq("Input") && c.clock_manager.is_none() {
         let old_expr = &c.state_expr;
         let new_expr = form_expr(&c.in_exprs, &c.symbol);
         if new_expr.eq(old_expr) {
@@ -135,8 +162,8 @@ pub fn evaluate_component_expression(
         if ele.is_none() {
             eprintln!("No element with id {}", id);
         }
-        let ele = ele.unwrap();
-        ele.borrow_mut().set_pin_expr(pin, c.state_expr.clone());
+        let mut ele = ele.unwrap().borrow_mut();
+        ele.set_pin_expr(pin, c.state_expr.clone());
         // optimization to the exec_queue. If there are same id's
         // in succession, we don't need to run update for each.
         // Just updating once suffices.
@@ -165,4 +192,3 @@ impl fmt::Display for Gate {
         )
     }
 }
-

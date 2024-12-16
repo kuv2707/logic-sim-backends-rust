@@ -86,6 +86,9 @@ impl BCircuit {
         return id;
     }
     pub fn connect(&mut self, receiver_id: ID, pin: u16, emitter_id: ID) -> Result<(), String> {
+        // removing and reinserting has a beneficial side effect of disallowing
+        // self loops - but can't depend on this as it only works when directly
+        // connecting a component's output to its input
         let receiver = self.components.remove(&receiver_id);
         if receiver.is_none() {
             return Err("Invalid receiver id".to_string());
@@ -180,9 +183,16 @@ impl BCircuit {
         }
         return t;
     }
-    pub fn state(&self, id: ID) -> Option<bool> {
+    pub fn state(&self, id: ID) -> Option<char> {
         match self.components.get(&id) {
-            Some(a) => Some(a.borrow().state),
+            Some(a) => {
+                let val = a.borrow().state.to_string().chars().nth(0).unwrap();
+                if val == 'f' {
+                    Some('0')
+                } else {
+                    Some('1')
+                }
+            }
             None => None,
         }
     }
@@ -198,8 +208,8 @@ fn define_common_gates(c: &mut BCircuit) {
         label: String::new(),
         comp_type: 'g',
         eval: |v| {
-            // println!("{:?}", v);
-            return !(v.iter().fold(true, |a, b| a && *b));
+            return !(v[0] && v[1]);
+            // return !(v.iter().fold(true, |a, b| a && *b));
         },
         default_inputs: 2,
         symbol: "!.".to_string(),
@@ -209,7 +219,8 @@ fn define_common_gates(c: &mut BCircuit) {
         label: String::new(),
         comp_type: 'g',
         eval: |v| {
-            return v.iter().fold(true, |a, b| a && *b);
+            return v[0] && v[1];
+            // return v.iter().fold(true, |a, b| a && *b);
         },
         default_inputs: 2,
         symbol: ".".to_string(),
@@ -219,7 +230,8 @@ fn define_common_gates(c: &mut BCircuit) {
         label: String::new(),
         comp_type: 'g',
         eval: |v| {
-            return v.iter().fold(false, |a, b| a || *b);
+            return v[0] || v[1];
+            // return v.iter().fold(false, |a, b| a || *b);
         },
         default_inputs: 2,
         symbol: "+".to_string(),
@@ -233,5 +245,19 @@ fn define_common_gates(c: &mut BCircuit) {
         },
         default_inputs: 1,
         symbol: "!".to_string(),
+    });
+
+    c.define_gate(ComponentDefParams {
+        name: "JK".to_string(),
+        label: String::new(),
+        comp_type: 'm',
+        eval: |v| {
+            let j = v[0];
+            let k = v[1];
+            let q = v[2];
+            (j && !q) || (!k && q)
+        },
+        default_inputs: 2,
+        symbol: "JK".to_string(),
     });
 }
