@@ -1,5 +1,8 @@
 use crate::{
-    components::{evaluate_component_expression, update_component_state, ComponentDefParams, Gate},
+    components::{
+        evaluate_component_expression, power_on_component, update_component_state,
+        ComponentDefParams, Gate,
+    },
     table::{bitwise_counter, Table},
     types::{ComponentActor, COMPONENT_NOT_DEFINED, ID},
 };
@@ -15,6 +18,7 @@ pub struct BCircuit {
     outputs: HashSet<ID>,
     last_id: ID,
     pub exec_queue: VecDeque<ID>,
+    active: bool,
 }
 
 impl BCircuit {
@@ -26,22 +30,26 @@ impl BCircuit {
             outputs: HashSet::new(),
             last_id: 0,
             exec_queue: VecDeque::new(),
+            active: false,
         };
         define_common_gates(&mut c);
         c
     }
-    pub fn run(&mut self) {
-        self.graph_act(update_component_state);
+    // pub fn run(&mut self) {
+    //     self.graph_act(update_component_state);
+    // }
+    pub fn power_on(&mut self) {
+        self.active = true;
+        self.graph_act(power_on_component, self.all_inputs_and_states());
     }
-    pub fn graph_act(&mut self, runnable: ComponentActor) {
-        // traverse in breadth-first fashion, starting from inputs
-        // and calls the specified function on the components
-        // todo: add clocked components (circuit states)
-        for (id, c) in &self.components {
-            if c.borrow().name.eq("Input") {
-                self.exec_queue.push_back(*id);
-            }
+
+    fn graph_act(&mut self, runnable: ComponentActor, inits: Vec<ID>) {
+        // traverse in breadth-first fashion, starting from received `inits`
+        // and calls the specified function until queue vacates.
+        for k in inits {
+            self.exec_queue.push_back(k);
         }
+
         while !self.exec_queue.is_empty() {
             let id = self.exec_queue.pop_front().unwrap();
             let mut k = self.components.get(&id).unwrap().borrow_mut();
@@ -67,6 +75,19 @@ impl BCircuit {
     }
     pub fn get_component(&mut self, id: &ID) -> Option<&mut RefCell<Gate>> {
         return self.components.get_mut(id);
+    }
+    pub fn set_component_val(&mut self, id: ID, val: bool) {
+        // only inputs and clocked components would retain their
+        // states after we set them from here, memoryless elements
+        // lose forced state at the next state update
+        {
+            let mut c = self.components.get(&id).unwrap().borrow_mut();
+            c.state = val; // todo: use setter
+        }
+        if !self.active {
+            return;
+        }
+        self.graph_act(update_component_state, vec![id]);
     }
     fn make_component(&mut self, typ: &str, label: &str) -> Result<Gate, ID> {
         let def = self.component_definitions.get(typ);
@@ -109,7 +130,7 @@ impl BCircuit {
             ));
         }
 
-        emitter.borrow_mut().add_notify(receiver_id, pin);
+        emitter.borrow_mut().add_next(receiver_id, pin);
 
         self.components.insert(receiver_id, receiver);
         self.components.insert(emitter_id, emitter);
@@ -128,7 +149,17 @@ impl BCircuit {
         // in the circuit.
         // 2. we check for dangerous loops.
         // 3. we create input/output expression for each component
-        self.graph_act(evaluate_component_expression);
+        self.graph_act(evaluate_component_expression, self.all_inputs_and_states());
+    }
+    pub fn all_inputs_and_states(&self) -> Vec<ID> {
+        // todo: add clocked components (circuit states)
+        let mut q = Vec::<ID>::new();
+        for (id, c) in &self.components {
+            if c.borrow().name.eq("Input") || c.borrow().clock_manager.is_some() {
+                q.push(*id);
+            }
+        }
+        q
     }
     pub fn gen_truth_table(&mut self) -> Table<char> {
         let mut t = Table::<char>::new();
@@ -171,7 +202,6 @@ impl BCircuit {
                 );
                 i += 1;
             }
-            self.run();
             for id in &self.outputs {
                 let out_el = self.components.get(id).unwrap().borrow_mut();
                 t.set_val_at(

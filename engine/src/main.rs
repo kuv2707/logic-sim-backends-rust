@@ -7,7 +7,7 @@ mod table;
 mod types;
 mod utils;
 
-fn main() {
+fn sync_counter() {
     let mut circuit = BCircuit::new();
 
     // 4 bit sync. counter
@@ -86,16 +86,17 @@ fn main() {
     circuit.connect(n4, 2, o3).unwrap();
     circuit.connect(not4, 1, n4).unwrap();
 
+    // circuit.set_component_val(n4, false);
+    // circuit.set_component_val(n3, false);
+    // circuit.set_component_val(n2, true);
+    // circuit.set_component_val(n1, true);
+
     circuit.compile();
-    circuit.run();
+    circuit.power_on();
     let mut val = true;
     for _ in 0..32 {
-        {
-            let mut inp = circuit.get_component(&clk).unwrap().borrow_mut();
-            inp.state = val;
-            val = !val;
-        }
-        circuit.run();
+        circuit.set_component_val(clk, val);
+        val = !val;
         if val {
             continue;
         }
@@ -108,4 +109,18 @@ fn main() {
             // circuit.state(clk).unwrap(),
         );
     }
+}
+
+
+fn main() {
+    return sync_counter();
+    let mut c = BCircuit::new();
+    let not = c.add_component("NOT", "");
+    let i1 = c.register_input("A", false);
+    let or = c.add_component("OR", "");
+
+    c.connect(not, 1, i1).unwrap();
+    c.connect(or, 1, not).unwrap();
+    c.power_on();
+    println!("{}", c.state(or).unwrap());
 }

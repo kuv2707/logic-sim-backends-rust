@@ -26,7 +26,7 @@ pub struct Gate {
     pub label: String,
     eval: BinaryLogicReducer,
     pub state: bool,
-    output_notifylist: Vec<(ID, u16)>,
+    output_recvlist: Vec<(ID, u16)>,
     pub n_inp: u16,
     pub symbol: String,
     in_pins: Vec<bool>,
@@ -44,8 +44,8 @@ impl Gate {
             label: p.label.to_owned(),
             eval: p.eval,
             state: false,
-            output_notifylist: Vec::new(),
-            n_inp: p.default_inputs+2, // +2 if clocked elem - one for Q, and one for clk
+            output_recvlist: Vec::new(),
+            n_inp: p.default_inputs + 2, // +2 if clocked elem - one for Q, and one for clk
             symbol: p.symbol.clone(),
             in_pins: vec![false; p.default_inputs as usize + 2],
             in_exprs: vec![String::new(); p.default_inputs as usize + 2],
@@ -76,8 +76,8 @@ impl Gate {
         c.state_expr = lab.to_string();
         c
     }
-    pub fn add_notify(&mut self, target_id: ID, n_pin: u16) {
-        self.output_notifylist.push((target_id, n_pin));
+    pub fn add_next(&mut self, target_id: ID, n_pin: u16) {
+        self.output_recvlist.push((target_id, n_pin));
     }
 
     pub fn set_pin_val(&mut self, pin: &u16, val: bool) {
@@ -86,7 +86,8 @@ impl Gate {
             match &mut self.clock_manager {
                 Some(k) => {
                     // println!("trig {}",self.label);
-                    k.push(val)}
+                    k.push(val)
+                }
                 None => {}
             }
         }
@@ -100,24 +101,32 @@ impl Gate {
 // output and schedule an update for that component as a whole.
 // if this component's state didn't change when updated, then it
 // will not schedule updates for its neighbours.
+
+pub fn power_on_component(
+    c: &mut Gate,
+    mp: &HashMap<i32, RefCell<Gate>>,
+    exec_q: &mut VecDeque<ID>,
+) {
+    state_update(c, mp, exec_q, false);
+}
+
 pub fn update_component_state(
     c: &mut Gate,
     mp: &HashMap<i32, RefCell<Gate>>,
     exec_q: &mut VecDeque<ID>,
 ) {
-    if !c.name.eq("Input") && !(c.comp_type == 'm') {
-        let old_state = c.state;
-        let new_state = (c.eval)(&c.in_pins);
-        if new_state == old_state {
-            // buggy optimization: all components should
-            // trigger updates to their neighbours at least
-            // once. todo: think sth else
-            // return;
-        }
-        c.state = new_state;
-    }
+    state_update(c, mp, exec_q, true);
+}
+
+fn state_update(
+    c: &mut Gate,
+    mp: &HashMap<i32, RefCell<Gate>>,
+    exec_q: &mut VecDeque<ID>,
+    optimize: bool,
+) {
     match &mut c.clock_manager {
         Some(mag) => {
+            // clocked component
             if mag.clock_triggered() {
                 mag.reset_clock_hist();
                 c.state = (c.eval)(&c.in_pins);
@@ -125,10 +134,23 @@ pub fn update_component_state(
                 c.in_pins[output_in] = c.state;
             }
         }
-        None => {}
+        None => 'optimizer: {
+            if c.name.eq("Input") {
+                break 'optimizer;
+            }
+            let old_state = c.state;
+            let new_state = (c.eval)(&c.in_pins);
+            if optimize && new_state == old_state {
+                // buggy optimization: all components should
+                // trigger updates to their neighbours at least
+                // once. todo: think sth else
+                return;
+            }
+            c.state = new_state;
+        }
     }
     // println!("{} {} : {}",c.name, c.symbol, c.state);
-    for (id, pin) in &c.output_notifylist {
+    for (id, pin) in &c.output_recvlist {
         let ele = mp.get(id);
         if ele.is_none() {
             eprintln!("No element with id {}", id);
@@ -139,8 +161,9 @@ pub fn update_component_state(
         // optimization to the exec_queue. If there are same id's
         // in succession, we don't need to run update for each.
         // Just updating once suffices.
-        exec_q.push_back(*id);
-        if exec_q.is_empty() || *exec_q.back().unwrap() != *id {}
+        if exec_q.is_empty() || *exec_q.back().unwrap() != *id {
+            exec_q.push_back(*id);
+        }
     }
 }
 
@@ -157,7 +180,7 @@ pub fn evaluate_component_expression(
         }
         c.state_expr = new_expr;
     }
-    for (id, pin) in &c.output_notifylist {
+    for (id, pin) in &c.output_recvlist {
         let ele = mp.get(id);
         if ele.is_none() {
             eprintln!("No element with id {}", id);
