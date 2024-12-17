@@ -1,6 +1,7 @@
 pub struct ClockManager {
     curr: bool,
     last: bool,
+    expr: String,
 }
 
 impl ClockManager {
@@ -8,6 +9,7 @@ impl ClockManager {
         return ClockManager {
             curr: false,
             last: false,
+            expr: String::new(),
         };
     }
     pub fn reset_clock_hist(&mut self) {
@@ -23,5 +25,8 @@ impl ClockManager {
         }
         self.last = self.curr;
         self.curr = val
+    }
+    pub fn clk_expr(&mut self, val: String) {
+        self.expr = val;
     }
 }

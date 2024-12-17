@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     clock_manager::ClockManager,
-    types::{BinaryLogicReducer, ID, UNASSIGNED},
+    types::{BinaryLogicReducer, CLOCK_PIN, ID, UNASSIGNED},
     utils::form_expr,
 };
 #[derive(Clone)]
@@ -45,20 +45,20 @@ impl Gate {
             eval: p.eval,
             state: false,
             output_recvlist: Vec::new(),
-            n_inp: p.default_inputs + 2, // +2 if clocked elem - one for Q, and one for clk
+            n_inp: p.default_inputs,
             symbol: p.symbol.clone(),
-            in_pins: vec![false; p.default_inputs as usize + 2],
-            in_exprs: vec![String::new(); p.default_inputs as usize + 2],
+            in_pins: vec![false; p.default_inputs as usize],
+            in_exprs: vec![String::new(); p.default_inputs as usize],
             state_expr: String::new(),
             clock_manager: None,
         };
         if c.n_inp > 0 {
             // not doing for inputs etc
-            c.state = (c.eval)(&c.in_pins); // sound initial assumption
+            c.state = (c.eval)(&c.in_pins, false); // sound initial assumption
         }
         if c.comp_type == 'm' {
             c.clock_manager = Some(ClockManager::new());
-            c.state_expr = p.label + "(t+1)"
+            c.state_expr = p.label + "(t)"
         }
         c
     }
@@ -67,7 +67,7 @@ impl Gate {
         let mut c = Gate::from_params(ComponentDefParams {
             name: String::from("Input"),
             label: lab.to_owned(),
-            eval: |_| true,
+            eval: |_, _| true,
             default_inputs: 0,
             symbol: lab.to_owned(),
             comp_type: 'i',
@@ -80,20 +80,33 @@ impl Gate {
         self.output_recvlist.push((target_id, n_pin));
     }
 
-    pub fn set_pin_val(&mut self, pin: &u16, val: bool) {
-        self.in_pins[*pin as usize - 1] = val;
-        if *pin == (self.in_pins.len() as u16) {
+    pub fn set_pin_val(&mut self, pin: &u16, val: bool) -> Result<(), String> {
+        if *pin == CLOCK_PIN {
             match &mut self.clock_manager {
                 Some(k) => {
                     // println!("trig {}",self.label);
                     k.push(val)
                 }
-                None => {}
+                None => return Err(String::from("This is not a clocked component")),
             }
+        } else {
+            self.in_pins[*pin as usize - 1] = val;
         }
+        Ok(())
     }
-    pub fn set_pin_expr(&mut self, pin: &u16, val: String) {
-        self.in_exprs[*pin as usize - 1] = val;
+    pub fn set_pin_expr(&mut self, pin: &u16, val: String) -> Result<(), String> {
+        if *pin == CLOCK_PIN {
+            match &mut self.clock_manager {
+                Some(k) => {
+                    // println!("trig {}",self.label);
+                    k.clk_expr(val)
+                }
+                None => return Err(String::from("This is not a clocked component")),
+            }
+        } else {
+            self.in_exprs[*pin as usize - 1] = val;
+        }
+        Ok(())
     }
 }
 
@@ -129,9 +142,7 @@ fn state_update(
             // clocked component
             if mag.clock_triggered() {
                 mag.reset_clock_hist();
-                c.state = (c.eval)(&c.in_pins);
-                let output_in = c.in_pins.len() - 2;
-                c.in_pins[output_in] = c.state;
+                c.state = (c.eval)(&c.in_pins, c.state);
             }
         }
         None => 'optimizer: {
@@ -139,7 +150,7 @@ fn state_update(
                 break 'optimizer;
             }
             let old_state = c.state;
-            let new_state = (c.eval)(&c.in_pins);
+            let new_state = (c.eval)(&c.in_pins, old_state);
             if optimize && new_state == old_state {
                 // buggy optimization: all components should
                 // trigger updates to their neighbours at least
@@ -157,7 +168,7 @@ fn state_update(
         }
         let mut ele = ele.unwrap().borrow_mut();
         // println!("from {} to {} {} : {}",c.label, ele.label, pin, c.state);
-        ele.set_pin_val(pin, c.state);
+        ele.set_pin_val(pin, c.state).unwrap();
         // optimization to the exec_queue. If there are same id's
         // in succession, we don't need to run update for each.
         // Just updating once suffices.
@@ -186,7 +197,7 @@ pub fn evaluate_component_expression(
             eprintln!("No element with id {}", id);
         }
         let mut ele = ele.unwrap().borrow_mut();
-        ele.set_pin_expr(pin, c.state_expr.clone());
+        ele.set_pin_expr(pin, c.state_expr.clone()).unwrap();
         // optimization to the exec_queue. If there are same id's
         // in succession, we don't need to run update for each.
         // Just updating once suffices.
@@ -206,12 +217,13 @@ impl fmt::Display for Gate {
 
         write!(
             f,
-            "{} ({} input{}) - Symbol: \x1b[33m{}\x1b[0m - State: {}",
+            "{} ({} input{}) - Symbol: \x1b[33m{}\x1b[0m - State: {}\n{}",
             self.name,
             self.n_inp,
             if self.n_inp == 1 { "" } else { "s" },
             self.symbol,
-            state_str
+            state_str,
+            self.in_exprs.join("  \n")
         )
     }
 }

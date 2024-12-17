@@ -1,4 +1,5 @@
 use circuit::BCircuit;
+use types::CLOCK_PIN;
 
 mod circuit;
 mod clock_manager;
@@ -28,19 +29,19 @@ fn sync_counter() {
     let o3 = circuit.add_component("OR", "o1");
 
     let not0 = circuit.add_component("NOT", "not1");
-    let not1 = circuit.add_component("NOT", "not1");
-    let not2 = circuit.add_component("NOT", "not1");
-    let not3 = circuit.add_component("NOT", "not1");
-    let not4 = circuit.add_component("NOT", "not1");
+    let not1 = circuit.add_component("NOT", "not2");
+    let not2 = circuit.add_component("NOT", "not3");
+    let not3 = circuit.add_component("NOT", "not4");
+    let not4 = circuit.add_component("NOT", "not5");
 
     let m = circuit.register_input("M", !true);
     let clk = circuit.register_input("clk", false);
     let one = circuit.register_input("1", true);
 
-    circuit.connect(n1, 4, clk).unwrap();
-    circuit.connect(n2, 4, clk).unwrap();
-    circuit.connect(n3, 4, clk).unwrap();
-    circuit.connect(n4, 4, clk).unwrap();
+    circuit.connect(n1, CLOCK_PIN, clk).unwrap();
+    circuit.connect(n2, CLOCK_PIN, clk).unwrap();
+    circuit.connect(n3, CLOCK_PIN, clk).unwrap();
+    circuit.connect(n4, CLOCK_PIN, clk).unwrap();
 
     circuit.connect(not0, 1, m).unwrap();
 
@@ -92,6 +93,10 @@ fn sync_counter() {
     // circuit.set_component_val(n1, true);
 
     circuit.compile();
+    // let statefuls = vec![n1, n2, n3,n4];
+    // for id in statefuls {
+    //     println!("{}", circuit.get_component(&id).unwrap().borrow());
+    // }
     circuit.power_on();
     let mut val = true;
     for _ in 0..32 {

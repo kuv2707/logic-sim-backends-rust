@@ -4,7 +4,7 @@ use crate::{
         ComponentDefParams, Gate,
     },
     table::{bitwise_counter, Table},
-    types::{ComponentActor, COMPONENT_NOT_DEFINED, ID},
+    types::{ComponentActor, CLOCK_PIN, COMPONENT_NOT_DEFINED, ID},
 };
 use std::{
     cell::RefCell,
@@ -122,7 +122,7 @@ impl BCircuit {
         }
         let emitter = emitter.unwrap();
 
-        if pin > receiver.borrow().n_inp {
+        if pin > receiver.borrow().n_inp && pin != CLOCK_PIN {
             return Err(format!(
                 "There are only {} pins, can't access {}",
                 receiver.borrow().n_inp,
@@ -237,7 +237,7 @@ fn define_common_gates(c: &mut BCircuit) {
         name: "NAND".to_string(),
         label: String::new(),
         comp_type: 'g',
-        eval: |v| {
+        eval: |v,_| {
             return !(v[0] && v[1]);
             // return !(v.iter().fold(true, |a, b| a && *b));
         },
@@ -248,7 +248,7 @@ fn define_common_gates(c: &mut BCircuit) {
         name: "AND".to_string(),
         label: String::new(),
         comp_type: 'g',
-        eval: |v| {
+        eval: |v,_| {
             return v[0] && v[1];
             // return v.iter().fold(true, |a, b| a && *b);
         },
@@ -259,7 +259,7 @@ fn define_common_gates(c: &mut BCircuit) {
         name: "OR".to_string(),
         label: String::new(),
         comp_type: 'g',
-        eval: |v| {
+        eval: |v,_| {
             return v[0] || v[1];
             // return v.iter().fold(false, |a, b| a || *b);
         },
@@ -270,7 +270,7 @@ fn define_common_gates(c: &mut BCircuit) {
         name: "NOT".to_string(),
         label: String::new(),
         comp_type: 'g',
-        eval: |v| {
+        eval: |v,_| {
             return !v[0];
         },
         default_inputs: 1,
@@ -281,10 +281,9 @@ fn define_common_gates(c: &mut BCircuit) {
         name: "JK".to_string(),
         label: String::new(),
         comp_type: 'm',
-        eval: |v| {
+        eval: |v, q| {
             let j = v[0];
             let k = v[1];
-            let q = v[2];
             (j && !q) || (!k && q)
         },
         default_inputs: 2,
