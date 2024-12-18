@@ -6,14 +6,14 @@ use std::{
 
 use crate::{
     clock_manager::ClockManager,
-    types::{BinaryLogicReducer, CLOCK_PIN, ID, UNASSIGNED},
+    types::{BinaryLogicReducer, CompType, CLOCK_PIN, ID, UNASSIGNED},
     utils::form_expr,
 };
 #[derive(Clone)]
 pub struct ComponentDefParams {
     pub name: String,
     pub label: String,
-    pub comp_type: char,
+    pub comp_type: CompType,
     pub eval: BinaryLogicReducer,
     pub default_inputs: u16,
     pub symbol: String,
@@ -22,7 +22,7 @@ pub struct ComponentDefParams {
 pub struct Gate {
     pub name: String,
     pub id: ID,
-    pub comp_type: char, // 'g' or 'm'
+    pub comp_type: CompType,
     pub label: String,
     eval: BinaryLogicReducer,
     pub state: bool,
@@ -56,7 +56,7 @@ impl Gate {
             // not doing for inputs etc
             c.state = (c.eval)(&c.in_pins, false); // sound initial assumption
         }
-        if c.comp_type == 'm' {
+        if c.comp_type == CompType::Sequential {
             c.clock_manager = Some(ClockManager::new());
             c.state_expr = p.label + "(t)"
         }
@@ -70,11 +70,14 @@ impl Gate {
             eval: |_, _| true,
             default_inputs: 0,
             symbol: lab.to_owned(),
-            comp_type: 'i',
+            comp_type: CompType::Input,
         });
         c.state = init;
         c.state_expr = lab.to_string();
         c
+    }
+    pub fn force_state(&mut self, state: bool) {
+        self.state = state;
     }
     pub fn add_next(&mut self, target_id: ID, n_pin: u16) {
         self.output_recvlist.push((target_id, n_pin));
@@ -152,15 +155,12 @@ fn state_update(
             let old_state = c.state;
             let new_state = (c.eval)(&c.in_pins, old_state);
             if optimize && new_state == old_state {
-                // buggy optimization: all components should
-                // trigger updates to their neighbours at least
-                // once. todo: think sth else
                 return;
             }
             c.state = new_state;
         }
     }
-    // println!("{} {} : {}",c.name, c.symbol, c.state);
+    // println!("{} {} : {}",c.name, c.label, c.state);
     for (id, pin) in &c.output_recvlist {
         let ele = mp.get(id);
         if ele.is_none() {

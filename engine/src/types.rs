@@ -12,4 +12,10 @@ pub type ComponentActor = fn(&mut Gate, &HashMap<i32, RefCell<Gate>>, &mut VecDe
 pub type ID = i32;
 pub const COMPONENT_NOT_DEFINED: ID = -1;
 pub const UNASSIGNED: ID = -2;
+
 pub const CLOCK_PIN: u16 = u16::MAX;
+
+#[derive(Clone, PartialEq)]
+pub enum CompType {
+    Combinational, Sequential, Input
+}
