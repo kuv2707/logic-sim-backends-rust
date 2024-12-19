@@ -1,9 +1,14 @@
+#![allow(unused)]
+
 use circuit::BCircuit;
+use quine_mccluskey::qm_simplify_many;
+use table::Table;
 use types::CLOCK_PIN;
 
 mod circuit;
 mod clock_manager;
 mod components;
+mod quine_mccluskey;
 mod table;
 mod types;
 mod utils;
@@ -136,7 +141,7 @@ fn sync_sttable() {
     c.track_output(ff);
     c.compile();
     c.power_on();
-    let mut val  = false;
+    let mut val = false;
     for _ in 0..9 {
         c.set_component_state(clk, val);
         val = !val;
@@ -146,19 +151,82 @@ fn sync_sttable() {
     println!("{}", c.gen_truth_table());
 }
 
-fn main() {
-    // return sync_counter();
-    return sync_sttable();
+fn comb_ckt() {
     let mut c = BCircuit::new();
-    let not = c.add_component("NOT", "not");
     let i1 = c.add_input("A", false);
     let i2 = c.add_input("B", false);
-    let or = c.add_component("OR", "or");
+    let i3 = c.add_input("C", false);
+    let i4 = c.add_input("D", false);
 
-    c.connect(not, 1, i1).unwrap();
-    c.connect(or, 1, not).unwrap();
-    c.connect(or, 2, i2).unwrap();
+    let n1 = c.add_component("NOT", "not1");
+    let n2 = c.add_component("NOT", "not2");
+    let or = c.add_component("OR", "TOTAL");
+    
+    let a1 = c.add_component("AND", "AB");
+    let a2 = c.add_component("AND", "!A!B");
+    let a3 = c.add_component("AND", "!A!BC");
+
+    c.connect(n1, 1, i1);
+    c.connect(n2, 1, i2);
+
+
+    c.connect(a1, 1, i1).unwrap();
+    c.connect(a1, 2, i2).unwrap();
+
+    c.connect(a2, 1, n1).unwrap();
+    c.connect(a2, 2, n2).unwrap();
+
+    c.connect(a3, 1, a2);
+    c.connect(a3, 2, i3);
+    
+    c.connect(or, 1, a3);
+    c.connect(or, 2, a1);
+
     c.track_output(or);
     c.power_on();
     println!("{}", c.gen_truth_table());
 }
+fn main() {
+    // return sync_counter();
+    // return sync_sttable();
+    comb_ckt();
+
+    let mut tt = Table::<char>::new();
+    tt.set_columns(
+        vec!["A", "B", "C", "D", "F1"]
+            .iter()
+            .map(|v| v.to_string())
+            .collect(),
+    ).unwrap();
+    let rows = vec![
+        vec!['0', '0', '0', '0', '0'],
+        vec!['0', '0', '0', '1', '0'],
+        vec!['0', '0', '1', '0', '1'],
+        vec!['0', '0', '1', '1', '1'],
+        vec!['0', '1', '0', '0', '0'],
+        vec!['0', '1', '0', '1', '0'],
+        vec!['0', '1', '1', '0', '0'],
+        vec!['0', '1', '1', '1', '0'],
+        vec!['1', '0', '0', '0', '0'],
+        vec!['1', '0', '0', '1', '0'],
+        vec!['1', '0', '1', '0', '0'],
+        vec!['1', '0', '1', '1', '0'],
+        vec!['1', '1', '0', '0', '1'],
+        vec!['1', '1', '0', '1', '1'],
+        vec!['1', '1', '1', '0', '1'],
+        vec!['1', '1', '1', '1', '1'],
+    ];
+    tt.set_rows(rows).unwrap();
+    let outs = vec!["F1"];
+    let res = qm_simplify_many(&tt, &vec!["A", "B", "C", "D"], &outs);
+    for i in 0..outs.len() {
+        println!("{} = {}", outs[i], res[i]);
+    }
+}
+
+// goals:
+// - implement QM algo
+// - implement accepting an expression for an input pin and
+//   automaticallly making required connections in Circuit
+// - implement generating an img/gif of the circuit
+// - (OPT) impl timing diagram

@@ -4,7 +4,7 @@ use std::{collections::HashMap, fmt};
 pub struct Table<T> {
     cols: Vec<String>,
     col_idx: HashMap<String, usize>,
-    rows: Vec<Vec<T>>,
+    pub rows: Vec<Vec<T>>,
 }
 
 impl<T: Default + Clone> Table<T> {
@@ -15,13 +15,18 @@ impl<T: Default + Clone> Table<T> {
             rows: Vec::new(),
         };
     }
-    pub fn reset_columns(&mut self, cols: Vec<String>) {
+    pub fn set_columns(&mut self, cols: Vec<String>) -> Result<(), String> {
         self.cols = cols;
-        self.rows.clear();
         self.col_idx.clear();
+        // duplicate column values will cause undefined behaviour
         for i in 0..self.cols.len() {
             self.col_idx.insert(self.cols[i].clone(), i);
         }
+        Ok(())
+    }
+    pub fn set_rows(&mut self, rows: Vec<Vec<T>>) -> Result<(), String> {
+        self.rows = rows;
+        Ok(())
     }
     pub fn add_row(&mut self) -> usize {
         self.rows.push(vec![T::default(); self.cols.len()]);
@@ -29,6 +34,9 @@ impl<T: Default + Clone> Table<T> {
     }
     pub fn set_val_at(&mut self, i: usize, j: &str, val: T) {
         self.rows[i][*(self.col_idx.get(j).unwrap())] = val;
+    }
+    pub fn get_val_at(& self, i: usize, j: &str) -> &T {
+        &self.rows[i][*(self.col_idx.get(j).unwrap())]
     }
 }
 
@@ -43,15 +51,15 @@ impl<T: fmt::Display> fmt::Display for Table<T> {
                 ret
             })
             .collect::<Vec<(String, String)>>();
-        let total_width = pad.iter().fold(0, |a, b| a + b.0.len() + b.1.len()+2);
+        let total_width = pad.iter().fold(0, |a, b| a + b.0.len() + b.1.len() + 2);
 
-        writeln!(f, "|{}|", "¯".repeat(total_width-1))?;
+        writeln!(f, "|{}|", "¯".repeat(total_width - 1))?;
         write!(f, "|")?;
         for i in 0..pad.len() {
             write!(f, "  \x1b[33m{}\x1b[0m  |", self.cols[i])?;
         }
         writeln!(f)?;
-        writeln!(f, "|{}|", "-".repeat(total_width-1))?;
+        writeln!(f, "|{}|", "-".repeat(total_width - 1))?;
         for row in &self.rows {
             write!(f, "|")?;
             for i in 0..pad.len() {
@@ -59,7 +67,7 @@ impl<T: fmt::Display> fmt::Display for Table<T> {
             }
             writeln!(f)?;
         }
-        writeln!(f, "|{}|", "_".repeat(total_width-1))?;
+        writeln!(f, "|{}|", "_".repeat(total_width - 1))?;
         Ok(())
     }
 }

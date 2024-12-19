@@ -196,7 +196,7 @@ impl BCircuit {
         sorted_out_labels.sort();
         cols.append(sorted_out_labels);
 
-        t.reset_columns(cols);
+        t.set_columns(cols);
         for ct in bitwise_counter(inps.len()) {
             let idx = t.add_row();
             let mut i = 0;
