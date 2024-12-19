@@ -287,6 +287,18 @@ fn define_common_gates(c: &mut BCircuit) {
         default_inputs: 1,
         symbol: "!".to_string(),
     });
+    
+    c.define_gate(ComponentDefParams {
+        name: "BFR".to_string(), // buffer
+        label: String::new(),
+        comp_type: CompType::Combinational,
+        eval: |v, _| {
+            return v[0];
+        },
+        default_inputs: 1,
+        symbol: "".to_string(),
+    });
+
 
     c.define_gate(ComponentDefParams {
         name: "JK".to_string(),
