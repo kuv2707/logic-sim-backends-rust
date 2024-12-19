@@ -160,7 +160,7 @@ fn comb_ckt() {
 
     let n1 = c.add_component("NOT", "not1");
     let n2 = c.add_component("NOT", "not2");
-    let or = c.add_component("OR", "TOTAL");
+    let or = c.add_component("OR", "F1");
     
     let a1 = c.add_component("AND", "AB");
     let a2 = c.add_component("AND", "!A!B");
@@ -207,7 +207,7 @@ fn main() {
         vec!['0', '1', '0', '1', '0'],
         vec!['0', '1', '1', '0', '0'],
         vec!['0', '1', '1', '1', '0'],
-        vec!['1', '0', '0', '0', '0'],
+        vec!['1', '0', '0', '0', '1'],
         vec!['1', '0', '0', '1', '0'],
         vec!['1', '0', '1', '0', '0'],
         vec!['1', '0', '1', '1', '0'],

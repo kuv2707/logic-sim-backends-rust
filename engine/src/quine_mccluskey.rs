@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::table::Table;
 
+const DONT_CARE: char = '_';
+
 pub fn qm_simplify_many(t: &Table<char>, inps: &Vec<&str>, outs: &Vec<&str>) -> Vec<String> {
     // returns simplified expressions of vars in outs (from corresponding
     // column in truth table) in terms of input vars
@@ -15,6 +17,7 @@ pub fn qm_simplify_one(t: &Table<char>, inps: &Vec<&str>, out: &str) -> String {
     let mut grp = grp_by_ones(t, inps, out);
     let mut unpaired = HashSet::<(u16, usize)>::new();
     let mut prime_implicants = HashSet::new();
+    
     loop {
         let mut nxt_grp_table: BTreeMap<u16, Vec<(Vec<u16>, Vec<char>)>> = BTreeMap::new();
         // mark all rows as unpaired
@@ -60,9 +63,6 @@ pub fn qm_simplify_one(t: &Table<char>, inps: &Vec<&str>, out: &str) -> String {
                     prime_implicants.insert(k.clone());
                 }
             }
-            // for k in &prime_implicants {
-            //     println!("{:?}", k);
-            // }
             break;
         }
         grp = nxt_grp_table;
@@ -70,20 +70,23 @@ pub fn qm_simplify_one(t: &Table<char>, inps: &Vec<&str>, out: &str) -> String {
     //todo: find essential prime implicants
 
     let mut simplified_exp = String::new();
-    for pi in prime_implicants {
-        let ins = pi.1;
-        for i in 0..inps.len() {
-            if ins[i] == '_' {
-                continue;
-            } else if ins[i] == '0' {
-                simplified_exp.push_str(format!("!{}", inps[i]).as_str());
-            } else {
-                simplified_exp.push_str(format!("{}", inps[i]).as_str());
+    prime_implicants
+        .iter()
+        .map(|v| {
+            let mut exp = String::new();
+            let ins = &v.1;
+            for i in 0..inps.len() {
+                if ins[i] == DONT_CARE {
+                    continue;
+                }
+                exp.push_str(
+                    format!("{}{}", if ins[i] == '0' { "!" } else { "" }, inps[i]).as_str(),
+                );
             }
-        }
-        simplified_exp.push('+');
-    }
-    simplified_exp
+            exp
+        })
+        .collect::<Vec<String>>()
+        .join("+")
 }
 
 fn form_nxt_table_grp_from_rows(
@@ -141,7 +144,7 @@ fn collate_rows(a: &Vec<char>, b: &Vec<char>) -> Vec<char> {
         if a[i] == b[i] {
             k[i] = a[i];
         } else {
-            k[i] = '_';
+            k[i] = DONT_CARE;
         }
     }
     k

@@ -14,7 +14,7 @@ use std::{
 pub struct BCircuit {
     component_definitions: HashMap<String, ComponentDefParams>,
     components: HashMap<ID, RefCell<Gate>>,
-    inputs: HashSet<String>,
+    inputs: HashMap<String, ID>,
     outputs: HashSet<ID>,
     last_id: ID,
     pub exec_queue: VecDeque<ID>,
@@ -27,7 +27,7 @@ impl BCircuit {
         let mut c = BCircuit {
             component_definitions: HashMap::new(),
             components: HashMap::new(),
-            inputs: HashSet::new(),
+            inputs: HashMap::new(),
             outputs: HashSet::new(),
             last_id: 0,
             exec_queue: VecDeque::new(),
@@ -113,11 +113,15 @@ impl BCircuit {
         return Ok(Gate::from_params(def));
     }
     pub fn add_input(&mut self, label: &str, init_val: bool) -> ID {
+        if let Some(id) = self.inputs.get(label) {
+            println!("Already exists {}", id);
+            return *id;
+        }
         let mut inp = Gate::make_input(label, init_val);
         let id = self.new_id();
         inp.id = id;
         self.components.insert(id, RefCell::new(inp));
-        self.inputs.insert(label.to_string());
+        self.inputs.insert(label.to_string(), id);
         return id;
     }
     pub fn connect(&mut self, receiver_id: ID, pin: u16, emitter_id: ID) -> Result<(), String> {
@@ -287,7 +291,7 @@ fn define_common_gates(c: &mut BCircuit) {
         default_inputs: 1,
         symbol: "!".to_string(),
     });
-    
+
     c.define_gate(ComponentDefParams {
         name: "BFR".to_string(), // buffer
         label: String::new(),
@@ -298,7 +302,6 @@ fn define_common_gates(c: &mut BCircuit) {
         default_inputs: 1,
         symbol: "".to_string(),
     });
-
 
     c.define_gate(ComponentDefParams {
         name: "JK".to_string(),
