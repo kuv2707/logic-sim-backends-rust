@@ -259,6 +259,7 @@ fn define_common_gates(c: &mut BCircuit) {
         default_inputs: 2,
         symbol: "!.".to_string(),
     });
+
     c.define_gate(ComponentDefParams {
         name: "AND".to_string(),
         label: String::new(),
@@ -270,6 +271,7 @@ fn define_common_gates(c: &mut BCircuit) {
         default_inputs: 2,
         symbol: ".".to_string(),
     });
+
     c.define_gate(ComponentDefParams {
         name: "OR".to_string(),
         label: String::new(),
@@ -281,6 +283,18 @@ fn define_common_gates(c: &mut BCircuit) {
         default_inputs: 2,
         symbol: "+".to_string(),
     });
+
+    c.define_gate(ComponentDefParams {
+        name: "XOR".to_string(),
+        label: String::new(),
+        comp_type: CompType::Combinational,
+        eval: |v, _| {
+            return v[0] != v[1];
+        },
+        default_inputs: 2,
+        symbol: "+".to_string(),
+    });
+
     c.define_gate(ComponentDefParams {
         name: "NOT".to_string(),
         label: String::new(),
