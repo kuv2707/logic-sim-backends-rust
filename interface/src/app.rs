@@ -145,46 +145,12 @@ impl SimulatorUI {
         }
     }
     fn draw_connections(&self, ckt: &BCircuit, pt: &Painter) {
-        for gate in ckt.components() {
-            let d_data_from = self.display_data.get(&gate.borrow().id).unwrap();
-            let from = d_data_from.loc + d_data_from.output_loc;
-            for (nx_id, pin) in gate.borrow().get_output_receivers() {
-                let d_data_to = self.display_data.get(nx_id).unwrap();
-                let to = d_data_to.loc
-                    + if *pin != CLOCK_PIN {
-                        d_data_to.input_locs[*pin as usize - 1]
-                    } else {
-                        vec2(50.0, 90.0)
-                    };
-                let mut pts = Vec::<Pos2>::new();
-                pts.reserve(6);
-                pts.push(from);
-                pts.push(from + vec2(20.0, 0.));
-                let m1 = pos2(f32::max((from.x + to.x) / 2.0, from.x + 20.0), from.y);
-                pts.push(m1);
-                let m2 = pos2(f32::min((from.x + to.x) / 2.0, to.x - 20.0), to.y);
-
-                if m1.x != m2.x {
-                    let half = 0.5;
-                    let m3 = pos2(m1.x, f32::min((m1.y + m2.y) * half, d_data_from.loc.y));
-                    let m4 = pos2(
-                        m2.x,
-                        f32::max((m1.y + m2.y) * half, d_data_to.loc.y + 100.0), // todo: bottom_right not working
-                    );
-                    pts.push(m3);
-                    if m3.y != m4.y {
-                        pts.push(pos2((m3.x + m4.x) * half, m3.y));
-                        pts.push(pos2((m3.x + m4.x) * half, m4.y));
-                    }
-                    pts.push(m4);
-                }
-                pts.push(m2);
-                pts.push(to - vec2(20.0, 0.));
-                pts.push(to);
-                //todo: replace with some path finding algorithm
-                pt.line(pts, Stroke::new(2.0, Color32::BLACK));
-            }
-        }
+        // algo:
+        // generate map with obstacles
+        // iterate through conns to get (start, end) pairs
+        // call A* for all those pairs
+        // render
+        
     }
     pub fn emit_event(&self, ev: UpdateOps) {
         if let Err(err) = self.sender.send(ev) {

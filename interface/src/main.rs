@@ -2,20 +2,24 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 mod app;
-mod update_ops;
 mod component_ui;
 mod consts;
 mod draw_conns;
+mod update_ops;
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     use app::SimulatorUI;
+    use consts::GRID_UNIT_SIZE;
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_min_inner_size([800.0, 600.0]).with_drag_and_drop(true),
-            ..Default::default()
+        viewport: egui::ViewportBuilder::default()
+            .with_min_inner_size([GRID_UNIT_SIZE * 60.0, GRID_UNIT_SIZE * 40.0])
+            // .with_drag_and_drop(true)
+            .with_resizable(false),
+        ..Default::default()
     };
     eframe::run_native(
         "Logic Simulator",
