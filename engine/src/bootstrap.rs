@@ -2,7 +2,15 @@ use crate::{circuit::BCircuit, components::ComponentDefParams, types::CompType};
 
 pub(crate) fn bootstrap_ckt(c: &mut BCircuit) {
     c.define_gate(ComponentDefParams {
-        name: "NAND".to_string(),
+        name: "Input".into(),
+        label: String::new(),
+        comp_type: CompType::Input,
+        eval: |_, old| old,
+        default_inputs: 0,
+        symbol: "".into(),
+    });
+    c.define_gate(ComponentDefParams {
+        name: "NAND".into(),
         label: String::new(),
         comp_type: CompType::Combinational,
         eval: |v, _| {
@@ -10,11 +18,11 @@ pub(crate) fn bootstrap_ckt(c: &mut BCircuit) {
             // return !(v.iter().fold(true, |a, b| a && *b));
         },
         default_inputs: 2,
-        symbol: "!.".to_string(),
+        symbol: "!.".into(),
     });
 
     c.define_gate(ComponentDefParams {
-        name: "AND".to_string(),
+        name: "AND".into(),
         label: String::new(),
         comp_type: CompType::Combinational,
         eval: |v, _| {
@@ -22,11 +30,11 @@ pub(crate) fn bootstrap_ckt(c: &mut BCircuit) {
             // return v.iter().fold(true, |a, b| a && *b);
         },
         default_inputs: 2,
-        symbol: ".".to_string(),
+        symbol: ".".into(),
     });
 
     c.define_gate(ComponentDefParams {
-        name: "OR".to_string(),
+        name: "OR".into(),
         label: String::new(),
         comp_type: CompType::Combinational,
         eval: |v, _| {
@@ -34,44 +42,44 @@ pub(crate) fn bootstrap_ckt(c: &mut BCircuit) {
             // return v.iter().fold(false, |a, b| a || *b);
         },
         default_inputs: 2,
-        symbol: "+".to_string(),
+        symbol: "+".into(),
     });
 
     c.define_gate(ComponentDefParams {
-        name: "XOR".to_string(),
+        name: "XOR".into(),
         label: String::new(),
         comp_type: CompType::Combinational,
         eval: |v, _| {
             return v[1] != v[2];
         },
         default_inputs: 2,
-        symbol: "+".to_string(),
+        symbol: "+".into(),
     });
 
     c.define_gate(ComponentDefParams {
-        name: "NOT".to_string(),
+        name: "NOT".into(),
         label: String::new(),
         comp_type: CompType::Combinational,
         eval: |v, _| {
             return !v[1];
         },
         default_inputs: 1,
-        symbol: "!".to_string(),
+        symbol: "!".into(),
     });
 
     c.define_gate(ComponentDefParams {
-        name: "BFR".to_string(), // buffer
+        name: "BFR".into(), // buffer
         label: String::new(),
         comp_type: CompType::Combinational,
         eval: |v, _| {
             return v[1];
         },
         default_inputs: 1,
-        symbol: "".to_string(),
+        symbol: "".into(),
     });
 
     c.define_gate(ComponentDefParams {
-        name: "JK".to_string(),
+        name: "JK".into(),
         label: String::new(),
         comp_type: CompType::Sequential,
         eval: |v, q| {
@@ -80,6 +88,6 @@ pub(crate) fn bootstrap_ckt(c: &mut BCircuit) {
             (j && !q) || (!k && q)
         },
         default_inputs: 2,
-        symbol: "JK".to_string(),
+        symbol: "JK".into(),
     });
 }

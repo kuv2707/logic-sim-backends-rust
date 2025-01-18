@@ -7,7 +7,25 @@ pub enum UpdateOps {
     Disconnect(ID, (ID, PIN)),
     Remove(ID),
 }
+#[derive(PartialEq, Eq)]
+pub enum SyncState {
+    Synced,
+    Error(String),
+    NotSynced,
+}
 
-pub struct SyncState {
-    pub synced: bool,
+impl SyncState {
+    pub fn is_synced(&self) -> bool {
+        matches!(self, SyncState::Synced)
+    }
+    pub fn is_error(&self) -> bool {
+        matches!(self, SyncState::Error(_))
+    }
+    pub fn error_msg(&self) -> &str {
+        if let SyncState::Error(msg) = self {
+            msg
+        } else {
+            ""
+        }
+    }
 }

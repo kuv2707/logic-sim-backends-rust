@@ -4,7 +4,7 @@ use bsim_engine::{
 };
 use egui::{vec2, Button, Color32, Rect, Response, Sense, TextEdit, Ui, Vec2};
 
-use crate::{app::DisplayData, update_ops::UpdateOps};
+use crate::{app::DisplayData, consts::GRID_UNIT_SIZE, update_ops::UpdateOps};
 
 pub fn paint_component(
     disp_params: &mut DisplayData,
@@ -13,7 +13,13 @@ pub fn paint_component(
     from: &mut Option<ID>,
 ) -> Vec<UpdateOps> {
     let mut emit_evts = Vec::<UpdateOps>::new();
-    let container = egui::Rect::from_min_size(disp_params.loc, egui::vec2(100.0, 100.0));
+    let container = egui::Rect::from_min_size(
+        disp_params.loc,
+        egui::vec2(
+            disp_params.scale * GRID_UNIT_SIZE,
+            disp_params.scale * GRID_UNIT_SIZE,
+        ),
+    );
     let al = ui.allocate_rect(container, Sense::click_and_drag());
     if ui.is_rect_visible(container) {
         let painter = ui.painter();
@@ -34,7 +40,7 @@ pub fn paint_component(
             match from {
                 Some(id) => {
                     emit_evts.push(if bks {
-                        UpdateOps::Disconnect(*id, (disp_params.id, i))
+                        UpdateOps::Disconnect(*id, (disp_params.id, i + 1))
                     } else {
                         UpdateOps::Connect(*id, (disp_params.id, i + 1))
                     });
@@ -88,12 +94,16 @@ pub fn paint_component(
         Rect::from_center_size(container.center(), vec2(50.0, 10.0)),
         ted,
     );
+    ui.put(
+        Rect::from_center_size(container.center() + vec2(0., 20.0), vec2(50.0, 10.0)),
+        Button::new(&gate.name),
+    );
 
     let r = ui.interact(container, al.id, Sense::click_and_drag());
     if r.dragged() {
         let k = ui.input(|i| i.pointer.interact_pos().unwrap());
-        disp_params.loc.x = k.x/GRID_UNIT_SIZE;
-        disp_params.loc.y = k.y;
+        disp_params.loc.x = ((k.x / GRID_UNIT_SIZE) as usize) as f32 * GRID_UNIT_SIZE;
+        disp_params.loc.y = ((k.y / GRID_UNIT_SIZE) as usize) as f32 * GRID_UNIT_SIZE;
     }
 
     if r.clicked() {

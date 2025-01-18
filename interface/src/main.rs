@@ -5,6 +5,7 @@ mod app;
 mod update_ops;
 mod component_ui;
 mod consts;
+mod draw_conns;
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {

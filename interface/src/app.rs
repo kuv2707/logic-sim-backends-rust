@@ -18,11 +18,10 @@ pub struct DisplayData {
     pub loc: Pos2,
     pub output_loc: Vec2,
     pub input_locs: Vec<Vec2>,
-    pub bottom_right: Pos2,
     pub id: ID,
     pub is_clocked: bool,
+    pub scale: f32,
 }
-
 
 pub struct SimulatorUI {
     ckt: Arc<Mutex<BCircuit>>,
@@ -30,6 +29,7 @@ pub struct SimulatorUI {
     pub sender: Sender<UpdateOps>,
     sync: Arc<Mutex<SyncState>>,
     pub from: Option<ID>,
+    pub available_comp_defns: Vec<(String, usize)>,
 }
 
 impl SimulatorUI {
@@ -37,34 +37,41 @@ impl SimulatorUI {
         let mut ckt = BCircuit::new();
         ckt.compile();
         ckt.power_on();
+        let mut available_comp_defns: Vec<(String, usize)> = ckt
+            .component_definitions
+            .values()
+            .map(|v| (v.name.clone(), v.default_inputs as usize))
+            .collect();
+        available_comp_defns.sort();
+
         let (sender, receiver) = channel::unbounded();
         let am = Arc::new(Mutex::new(ckt));
         let update_am = am.clone();
 
-        let sync_state = SyncState { synced: true };
+        let sync_state = SyncState::Synced;
         let sync = Arc::new(Mutex::new(sync_state));
         let sync_c = sync.clone();
         thread::spawn(move || loop {
             let rec = receiver.recv().unwrap();
             let mut ckt = update_am.lock();
-            match rec {
-                UpdateOps::SetState(id, val) => {
-                    ckt.set_component_state(id, val);
-                }
+            let result = match rec {
+                UpdateOps::SetState(id, val) => ckt.set_component_state(id, val),
                 UpdateOps::Connect(emitter_id, (receiver_id, pin)) => {
                     println!("{} {} {}", emitter_id, receiver_id, pin);
-                    ckt.connect(receiver_id, pin, emitter_id).unwrap();
+                    ckt.connect(receiver_id, pin, emitter_id)
                 }
                 UpdateOps::Disconnect(emitter_id, (receiver_id, pin)) => {
                     println!("{} {} {}", emitter_id, receiver_id, pin);
-                    ckt.disconnect(receiver_id, pin, emitter_id).unwrap();
+                    ckt.disconnect(receiver_id, pin, emitter_id)
                 }
-                UpdateOps::Remove(id) => {
-                    ckt.remove_component(id).unwrap();
-                }
-            }
-            let s = &mut sync.lock().synced;
-            *s = false;
+                UpdateOps::Remove(id) => ckt.remove_component(id),
+            };
+
+            let mut s = sync.lock();
+            *s = match result {
+                Ok(()) => SyncState::NotSynced,
+                Err(e) => SyncState::Error(e),
+            };
         });
         let sim = Self {
             ckt: am,
@@ -72,6 +79,7 @@ impl SimulatorUI {
             sender,
             sync: sync_c,
             from: None,
+            available_comp_defns,
         };
         sim
     }
@@ -79,24 +87,18 @@ impl SimulatorUI {
         let mut ckt = self.ckt.lock();
         let mut sync = self.sync.lock();
         ui.painter()
-            .rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(20, 20, 30));
-        self.draw_connections(&ckt, ui.painter());
+            .rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(80, 60, 60));
+
         ui.horizontal(|ui| {
-            for (i, typ) in [
-                "Input", "AND", "OR", "NOT", "XOR", "NAND", "NOT", "BFR", "JK",
-            ]
-            .iter()
-            .enumerate()
-            {
-                let button = egui::Button::new(*typ).min_size(Vec2::new(80.0, 40.0));
+            for (i, (name, n_inp)) in self.available_comp_defns.iter().enumerate() {
+                let button = egui::Button::new(name).min_size(Vec2::new(80.0, 40.0));
                 let response = button.ui(ui);
                 if response.clicked() {
-                    let id = match *typ {
+                    let id = match name.as_str() {
                         "Input" => ckt.add_input("", false),
-                        _ => ckt.add_component(typ, "A").unwrap(),
+                        _ => ckt.add_component(name, "A").unwrap(),
                     };
                     let gate = ckt.get_component(&id).unwrap().borrow();
-                    let n_inp = get_n_inp(*typ); // todo: extract from gate type
                     let spc = 100.0 / (n_inp + 1) as f32;
                     let loc = egui::pos2(40.0 + 80.0 * i as f32, 50.0);
                     self.display_data.insert(
@@ -105,28 +107,19 @@ impl SimulatorUI {
                         DisplayData {
                             loc,
                             output_loc: vec2(90.0, 50.0),
-                            input_locs: (0..n_inp)
+                            input_locs: (0..*n_inp)
                                 .map(|i| vec2(10.0, spc * (i + 1) as f32))
                                 .collect(),
-                            bottom_right: loc + vec2(100.0, 100.0),
                             id,
                             is_clocked: gate.clock_manager.is_some(),
+                            scale: 5.0,
                         },
                     );
                 }
             }
         });
 
-        ui.with_layout(Layout::right_to_left(egui::Align::Max), |ui| {
-            let btn = Button::new(if sync.synced { "Synced" } else { "Not synced" }).fill(
-                if sync.synced {
-                    egui::Color32::from_rgb(104, 208, 104)
-                } else {
-                    egui::Color32::from_rgb(255, 102, 102)
-                },
-            );
-            ui.add(btn);
-        });
+        self.draw_connections(&ckt, ui.painter());
 
         for gate in ckt.components() {
             let disp_data = self.display_data.get_mut(&gate.borrow().id).unwrap();
@@ -134,7 +127,22 @@ impl SimulatorUI {
                 self.emit_event(ev);
             }
         }
-        sync.synced = true;
+        ui.with_layout(Layout::right_to_left(egui::Align::Max), |ui| {
+            let btn = Button::new(if sync.is_synced() {
+                "Synced"
+            } else {
+                sync.error_msg()
+            })
+            .fill(if sync.is_synced() {
+                egui::Color32::from_rgb(34, 139, 34) // Darker green
+            } else {
+                egui::Color32::from_rgb(139, 0, 0) // Darker red
+            });
+            ui.add(btn);
+        });
+        if !sync.is_error() {
+            *sync = SyncState::Synced;
+        }
     }
     fn draw_connections(&self, ckt: &BCircuit, pt: &Painter) {
         for gate in ckt.components() {
@@ -190,14 +198,5 @@ impl eframe::App for SimulatorUI {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.ui(ui);
         });
-    }
-}
-
-fn get_n_inp(typ: &str) -> u16 {
-    match typ {
-        "Input" => 0,
-        "NOT" => 1,
-        "BFR" => 1,
-        _ => 2,
     }
 }
