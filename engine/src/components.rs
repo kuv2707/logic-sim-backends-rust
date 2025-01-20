@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     clock_manager::ClockManager,
-    types::{BinaryLogicReducer, CompType, CLOCK_PIN, ID, NULL, OUTPUT_PIN, PIN, UNASSIGNED},
+    types::{BinaryLogicReducer, CompType, CLOCK_PIN, ID, NULL, PIN, UNASSIGNED},
     utils::form_expr,
 };
 #[derive(Clone)]
@@ -212,7 +212,7 @@ fn state_update(
         return;
     }
     c.state = new_state;
-    println!("{} {} : {}", c.name, c.label, c.state);
+    // println!("{} {} : {}", c.name, c.label, c.state);
     for (id, pin) in &c.output_recvlist {
         let mut ele = mp
             .get(id)

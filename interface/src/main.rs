@@ -10,14 +10,20 @@ mod update_ops;
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     use app::SimulatorUI;
-    use consts::GRID_UNIT_SIZE;
+    use consts::{GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH};
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_min_inner_size([GRID_UNIT_SIZE * 60.0, GRID_UNIT_SIZE * 40.0])
-            // .with_drag_and_drop(true)
+            .with_max_inner_size((
+                GRID_UNIT_SIZE * WINDOW_WIDTH,
+                GRID_UNIT_SIZE * WINDOW_HEIGHT,
+            ))
+            .with_min_inner_size((
+                GRID_UNIT_SIZE * WINDOW_WIDTH,
+                GRID_UNIT_SIZE * WINDOW_HEIGHT,
+            ))
             .with_resizable(false),
         ..Default::default()
     };

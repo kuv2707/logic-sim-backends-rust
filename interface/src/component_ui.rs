@@ -2,9 +2,13 @@ use bsim_engine::{
     components::Gate,
     types::{CompType, CLOCK_PIN, ID},
 };
-use egui::{vec2, Button, Color32, Rect, Response, Sense, TextEdit, Ui, Vec2};
+use egui::{vec2, Button, Color32, Rect, Response, Sense, Stroke, TextEdit, Ui, Vec2};
 
-use crate::{app::DisplayData, consts::GRID_UNIT_SIZE, update_ops::UpdateOps};
+use crate::{
+    app::DisplayData,
+    consts::{GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
+    update_ops::UpdateOps,
+};
 
 pub fn paint_component(
     disp_params: &mut DisplayData,
@@ -14,35 +18,36 @@ pub fn paint_component(
 ) -> Vec<UpdateOps> {
     let mut emit_evts = Vec::<UpdateOps>::new();
     let container = egui::Rect::from_min_size(
-        disp_params.loc,
-        egui::vec2(
-            disp_params.scale * GRID_UNIT_SIZE,
-            disp_params.scale * GRID_UNIT_SIZE,
-        ),
+        disp_params.logical_loc * GRID_UNIT_SIZE,
+        disp_params.size * GRID_UNIT_SIZE,
     );
     let al = ui.allocate_rect(container, Sense::click_and_drag());
     if ui.is_rect_visible(container) {
         let painter = ui.painter();
         painter.rect_filled(
             container,
-            5.0,
+            8.0,
             if gate.state {
                 egui::Color32::from_rgb(144, 238, 144)
             } else {
                 egui::Color32::from_rgb(255, 102, 102)
             },
         );
+        painter.rect_stroke(container, 8.0, Stroke::new(2.0, Color32::BLACK));
     }
 
-    for (i, pos) in disp_params.input_locs.iter().enumerate() {
+    for (i, pos) in disp_params.input_locs_rel.iter().enumerate() {
+        if i == 0 && !disp_params.is_clocked {
+            continue;
+        }
         if add_pin_btn(container, *pos, ui, false).clicked() {
             let bks = is_ctrl_pressed(ui);
             match from {
                 Some(id) => {
                     emit_evts.push(if bks {
-                        UpdateOps::Disconnect(*id, (disp_params.id, i + 1))
+                        UpdateOps::Disconnect(*id, (disp_params.id, i))
                     } else {
-                        UpdateOps::Connect(*id, (disp_params.id, i + 1))
+                        UpdateOps::Connect(*id, (disp_params.id, i))
                     });
                 }
                 None => {}
@@ -52,7 +57,7 @@ pub fn paint_component(
 
     if add_pin_btn(
         container,
-        disp_params.output_loc,
+        disp_params.output_loc_rel,
         ui,
         match from {
             Some(id) => disp_params.id == *id,
@@ -73,21 +78,6 @@ pub fn paint_component(
             None => Some(disp_params.id),
         }
     }
-    if disp_params.is_clocked {
-        if add_pin_btn(container, vec2(50.0, 90.0), ui, false).clicked() {
-            let bks = is_ctrl_pressed(ui);
-            match from {
-                Some(id) => {
-                    emit_evts.push(if bks {
-                        UpdateOps::Disconnect(*id, (disp_params.id, CLOCK_PIN))
-                    } else {
-                        UpdateOps::Connect(*id, (disp_params.id, CLOCK_PIN))
-                    });
-                }
-                None => {}
-            }
-        }
-    }
 
     let ted = TextEdit::singleline(&mut gate.label).hint_text("label");
     ui.put(
@@ -102,8 +92,24 @@ pub fn paint_component(
     let r = ui.interact(container, al.id, Sense::click_and_drag());
     if r.dragged() {
         let k = ui.input(|i| i.pointer.interact_pos().unwrap());
-        disp_params.loc.x = ((k.x / GRID_UNIT_SIZE) as usize) as f32 * GRID_UNIT_SIZE;
-        disp_params.loc.y = ((k.y / GRID_UNIT_SIZE) as usize) as f32 * GRID_UNIT_SIZE;
+        let mut newx = (k.x / GRID_UNIT_SIZE) - disp_params.size.x / 2.0;
+        if newx + disp_params.size.x >= WINDOW_WIDTH {
+            newx = WINDOW_WIDTH - disp_params.size.x;
+        }
+        if newx < 0.0 {
+            newx = 0.0;
+        }
+
+        let mut newy = (k.y / GRID_UNIT_SIZE) - disp_params.size.y / 2.0;
+        if newy + disp_params.size.y >= WINDOW_HEIGHT {
+            newy = WINDOW_HEIGHT - disp_params.size.y;
+        }
+        if newy < 0.0 {
+            newy = 0.0;
+        }
+
+        disp_params.logical_loc.x = newx;
+        disp_params.logical_loc.y = newy;
     }
 
     if r.clicked() {
