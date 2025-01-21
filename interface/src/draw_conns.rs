@@ -19,17 +19,24 @@ struct OrdPt {
 impl OrdPt {
     fn neighbours(&self) -> Vec<Point> {
         let mut nbrs = Vec::new();
-        for i in -1..2 {
-            for j in -1..2 {
-                if i == 0 && j == 0 {
-                    continue;
-                }
-                let p = ((self.pos.0 as i32 + i), (self.pos.1 as i32 + j));
-                if self.is_valid(p.0, p.1) {
-                    nbrs.push(p);
-                }
+        for mov in [
+            // orthogonal dirs
+            [-1, 0],
+            [1, 0],
+            [0, -1],
+            [0, 1],
+            // diagonal dirs
+            [1, 1],
+            [1, -1],
+            [-1, 1],
+            [-1, -1],
+        ] {
+            let p = ((self.pos.0 as i32 + mov[0]), (self.pos.1 as i32 + mov[1]));
+            if self.is_valid(p.0, p.1) {
+                nbrs.push(p);
             }
         }
+
         // println!("{:?}", nbrs);
         nbrs
     }
@@ -130,7 +137,10 @@ fn heuristic_cost(from: Point, to: Point) -> Cost {
         swap(&mut x_diff, &mut y_diff);
     }
 
-    (x_diff * 14 + (y_diff - x_diff) * 10) as usize
+    // we penalize diagonal movement by making its cost
+    // 3x that of rectangular movement, to obtain a mostly
+    // rectangular path. (c'est beau!)
+    (x_diff * 30 + (y_diff - x_diff) * 10) as usize
 }
 
 #[cfg(test)]

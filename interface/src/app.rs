@@ -192,7 +192,7 @@ impl SimulatorUI {
             }
         }
         // print_screen(&screen);
-        let stroke = Stroke::new(5.0, Color32::WHITE);
+        let stroke = Stroke::new(2.0, Color32::WHITE);
         for gt in ckt.components() {
             let gate = gt.borrow();
             let from = self.display_data.get(&gate.id).unwrap();
