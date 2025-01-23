@@ -4,9 +4,10 @@ use std::{
     mem::swap,
 };
 
-use crate::consts::{WINDOW_HEIGHT, WINDOW_WIDTH};
-
-pub type Screen = [[UnitArea; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize];
+use crate::{
+    consts::{WINDOW_HEIGHT, WINDOW_WIDTH},
+    display_elems::{Screen, UnitArea},
+};
 
 type Cost = usize;
 type Point = (i32, i32);
@@ -71,12 +72,6 @@ impl PartialEq for OrdPt {
     fn eq(&self, other: &Self) -> bool {
         self.fcost() == other.fcost()
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum UnitArea {
-    VACANT,
-    Unvisitable,
 }
 
 pub fn a_star_get_pts(from: Point, to: Point, scr: &Screen) -> Vec<Point> {

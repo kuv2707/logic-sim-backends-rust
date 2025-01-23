@@ -1,7 +1,9 @@
 use bsim_engine::types::{ID, PIN};
 
+use crate::display_elems::DisplayData;
+
 #[derive(Debug)]
-pub enum UpdateOps {
+pub enum CircuitUpdateOps {
     SetState(ID, bool),
     Connect(ID, (ID, PIN)),
     Disconnect(ID, (ID, PIN)),
@@ -28,4 +30,13 @@ impl SyncState {
             ""
         }
     }
+}
+
+pub enum UiUpdateOps {
+    Dragged,
+    AddComponent(DisplayData),
+    RemoveComponent(ID),
+    Connect(ID, (ID, PIN)),
+    Disconnect(ID, (ID, PIN)),
+    Select(ID)
 }

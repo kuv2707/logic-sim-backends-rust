@@ -2,49 +2,34 @@ use std::{
     cmp::{max, min},
     collections::HashMap,
     f32,
-    sync::Arc,
+    sync::{Arc, Mutex},
     thread,
 };
 
 use bsim_engine::{
     circuit::BCircuit,
-    types::{CLOCK_PIN, ID},
+    types::{CLOCK_PIN, ID, PIN},
 };
 use crossbeam::channel::{self, Sender};
-use egui::{
-    mutex::Mutex, pos2, vec2, Button, Color32, Layout, Painter, Pos2, Stroke, Ui, Vec2, Widget,
-};
+use egui::{pos2, vec2, Button, Color32, Layout, Painter, Pos2, Stroke, Ui, Vec2, Widget};
 
 use crate::{
-    component_ui::paint_component,
+    component_ui::{paint_component, PIN_BTN_SIZE},
     consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
-    draw_conns::{a_star_get_pts, Screen, UnitArea},
-    update_ops::{SyncState, UpdateOps},
+    display_elems::{DisplayData, DisplayState, Screen, UnitArea, Wire},
+    path_find::a_star_get_pts,
+    state_handler_threads::{ckt_communicate, ui_update},
+    update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
 };
-
-pub struct DisplayData {
-    // top left corner of the component
-    // coords of the top left block on the grid where
-    // this component begins, not the px values
-    pub logical_loc: Pos2,
-    // these are relative to loc but are in px
-    pub output_loc_rel: Vec2,
-    pub input_locs_rel: Vec<Vec2>,
-    pub id: ID,
-    pub is_clocked: bool,
-    pub scale: f32,
-    // number of grid blocks it extends to
-    pub size: Vec2,
-}
 
 pub struct SimulatorUI {
     ckt: Arc<Mutex<BCircuit>>,
-    pub display_data: HashMap<ID, DisplayData>,
-    pub sender: Sender<UpdateOps>,
+    pub display_state: Arc<Mutex<DisplayState>>,
+    pub ckt_sender: Sender<CircuitUpdateOps>,
+    pub ui_sender: Sender<UiUpdateOps>,
     sync: Arc<Mutex<SyncState>>,
     pub from: Option<ID>,
     pub available_comp_defns: Vec<(String, usize)>,
-    pub screen: Screen,
 }
 
 impl SimulatorUI {
@@ -59,52 +44,45 @@ impl SimulatorUI {
             .collect();
         available_comp_defns.sort();
 
-        let (sender, receiver) = channel::unbounded();
-        let am = Arc::new(Mutex::new(ckt));
-        let update_am = am.clone();
+        let (ckt_sender, ckt_receiver) = channel::unbounded();
+        let ckt = Arc::new(Mutex::new(ckt));
 
         let sync_state = SyncState::Synced;
         let sync = Arc::new(Mutex::new(sync_state));
-        let sync_c = sync.clone();
-        thread::spawn(move || loop {
-            let rec = receiver.recv().unwrap();
-            let mut ckt = update_am.lock();
-            let result = match rec {
-                UpdateOps::SetState(id, val) => ckt.set_component_state(id, val),
-                UpdateOps::Connect(emitter_id, (receiver_id, pin)) => {
-                    // println!("{} {} {}", emitter_id, receiver_id, pin);
-                    ckt.connect(receiver_id, pin, emitter_id)
-                }
-                UpdateOps::Disconnect(emitter_id, (receiver_id, pin)) => {
-                    // println!("{} {} {}", emitter_id, receiver_id, pin);
-                    ckt.disconnect(receiver_id, pin, emitter_id)
-                }
-                UpdateOps::Remove(id) => ckt.remove_component(id),
-            };
 
-            let mut s = sync.lock();
-            *s = match result {
-                Ok(()) => SyncState::NotSynced,
-                Err(e) => SyncState::Error(e),
-            };
-        });
+        let (ui_sender, ui_receiver) = channel::unbounded();
+        let display_state = Arc::new(Mutex::new(DisplayState::new()));
+
+        thread::spawn(ckt_communicate(
+            ckt_receiver,
+            ckt.clone(),
+            sync.clone(),
+            ui_sender.clone(),
+        ));
+        thread::spawn(ui_update(ui_receiver, display_state.clone()));
+
         let sim = Self {
-            ckt: am,
-            display_data: HashMap::new(),
-            sender,
-            sync: sync_c,
+            ckt,
+            display_state,
+            ckt_sender,
+            ui_sender,
+            sync,
             from: None,
             available_comp_defns,
-            screen: make_screen(),
         };
         sim
     }
     fn ui(&mut self, ui: &mut Ui) {
-        let mut ckt = self.ckt.lock();
-        let mut sync = self.sync.lock();
+        let mut ckt = self.ckt.lock().unwrap();
+        let mut sync = self.sync.lock().unwrap();
+
         ui.painter()
             .rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(80, 60, 60));
 
+        let display_state = &mut self.display_state.lock().unwrap();
+
+        let display_data = &display_state.display_data;
+        let ui_sender = &mut self.ui_sender;
         ui.horizontal(|ui| {
             for (i, (name, n_inp)) in self.available_comp_defns.iter().enumerate() {
                 let button = egui::Button::new(name).min_size(Vec2::new(80.0, 40.0));
@@ -115,41 +93,50 @@ impl SimulatorUI {
                         _ => ckt.add_component(name, "A").unwrap(),
                     };
                     let gate = ckt.get_component(&id).unwrap().borrow();
-                    let spc = 100.0 / (n_inp + 1) as f32;
+                    let spc = 10.0 / (n_inp + 1) as f32;
                     let loc = egui::pos2(40.0 + 80.0 * i as f32, 100.0) / GRID_UNIT_SIZE;
+                    let size = (10.0, 10.0).into();
                     let input_locs_rel = (0..*n_inp + 1)
                         .map(|i| {
                             if i == 0 {
                                 // clock
-                                vec2(50.0, 90.0)
+                                vec2(5.0, 10.0)
                             } else {
-                                vec2(10.0, spc * i as f32)
+                                vec2(0.0, spc * i as f32)
                             }
                         })
                         .collect();
-                    self.display_data.insert(
+                    let data = DisplayData {
+                        logical_loc: loc,
+                        output_loc_rel: vec2(10.0, 5.0),
+                        input_locs_rel,
                         id,
-                        //todo: add various sizes for components and scale these fields accordingly
-                        DisplayData {
-                            logical_loc: loc,
-                            output_loc_rel: vec2(90.0, 50.0),
-                            input_locs_rel,
-                            id,
-                            is_clocked: gate.clock_manager.is_some(),
-                            scale: DEFAULT_SCALE,
-                            size: (10.0, 10.0).into(),
-                        },
-                    );
+                        is_clocked: gate.clock_manager.is_some(),
+                        scale: DEFAULT_SCALE,
+                        size,
+                    };
+                    {
+                        // display_data.insert(
+                        //     id,
+                        //     //todo: add various sizes for components and scale these fields accordingly
+                        //     data,
+                        // );
+                        send_event(ui_sender, UiUpdateOps::AddComponent(data));
+                    }
                 }
             }
         });
+        // print_screen(&display_state.screen);
+        self.draw_connections(&display_state.wires, ui.painter());
 
-        self.draw_connections(&ckt, ui.painter());
-
-        for gate in ckt.components() {
-            let disp_data = self.display_data.get_mut(&gate.borrow().id).unwrap();
-            for ev in paint_component(disp_data, ui, &mut gate.borrow_mut(), &mut self.from) {
-                self.emit_event(ev);
+        for (id, disp_data) in display_state.display_data.iter_mut() {
+            let gate = ckt.get_component(id).unwrap();
+            let res = paint_component(disp_data, ui, &mut gate.borrow_mut(), &mut self.from);
+            for evt in res.0 {
+                send_event(&self.ckt_sender, evt);
+            }
+            for evt in res.1 {
+                send_event(&self.ui_sender, evt);
             }
         }
         ui.with_layout(Layout::right_to_left(egui::Align::Max), |ui| {
@@ -169,63 +156,25 @@ impl SimulatorUI {
             *sync = SyncState::Synced;
         }
     }
-    fn draw_connections(&self, ckt: &BCircuit, pt: &Painter) {
-        // algo:
-        // generate map with obstacles
-        // iterate through conns to get (start, end) pairs
-        // call A* for all those pairs
-        // render
-
-        // todo: change screen array state as components are added/removed/moved
-        // instead of rebuilding each time
-        let mut screen = make_screen();
-
-        for (id, disp_data) in &self.display_data {
-            let p1 = disp_data.logical_loc;
-            let p2 = p1 + vec2(disp_data.size.x, disp_data.size.y);
-            for x in (max((p1.x-1.0) as i32, 0))..(min(p2.x as i32 + 1, WINDOW_WIDTH as i32)) {
-                for y in
-                    (max((p1.y - 1.0) as i32, 0))..(min(p2.y as i32 + 1, WINDOW_HEIGHT as i32))
-                {
-                    screen[y as usize][x as usize] = UnitArea::Unvisitable;
-                }
-            }
-        }
-        // print_screen(&screen);
-        let stroke = Stroke::new(2.0, Color32::WHITE);
-        for gt in ckt.components() {
-            let gate = gt.borrow();
-            let from = self.display_data.get(&gate.id).unwrap();
-            let from = from.logical_loc * GRID_UNIT_SIZE + from.output_loc_rel;
-            for (id, pin) in gate.get_output_receivers() {
-                let rec_dd = self.display_data.get(id).unwrap();
-                let to = rec_dd.logical_loc * GRID_UNIT_SIZE + rec_dd.input_locs_rel[*pin];
-                // pt.line(vec![from, to], stroke);
-
-                let pts = a_star_get_pts(
-                    (
-                        (from.x / GRID_UNIT_SIZE) as i32 + 3,
-                        (from.y / GRID_UNIT_SIZE) as i32,
-                    ),
-                    (
-                        (to.x / GRID_UNIT_SIZE) as i32 - 3,
-                        (to.y / GRID_UNIT_SIZE) as i32,
-                    ),
-                    &screen,
-                );
-                pt.line(
-                    pts.iter()
-                        .map(|p| pos2(p.0 as f32 * GRID_UNIT_SIZE, p.1 as f32 * GRID_UNIT_SIZE))
-                        .collect(),
-                    stroke,
-                );
-            }
+    fn draw_connections(&self, wires: &HashMap<(ID, (ID, PIN)), Wire>, pt: &Painter) {
+        for wire in wires.values() {
+            // cloning might be bad!
+            pt.line(
+                wire.pts
+                    .iter()
+                    .map(|k| {
+                        *k * GRID_UNIT_SIZE + 0.0 * vec2(PIN_BTN_SIZE / 2.0, PIN_BTN_SIZE / 2.0)
+                    })
+                    .collect(),
+                Stroke::new(wire.width, wire.col),
+            );
         }
     }
-    pub fn emit_event(&self, ev: UpdateOps) {
-        if let Err(err) = self.sender.send(ev) {
-            println!("{}", err.to_string());
-        }
+}
+
+pub fn send_event<T>(sender: &Sender<T>, evt: T) {
+    if let Err(err) = sender.send(evt) {
+        println!("{}", err.to_string());
     }
 }
 
@@ -235,10 +184,6 @@ impl eframe::App for SimulatorUI {
             self.ui(ui);
         });
     }
-}
-
-fn make_screen() -> Screen {
-    [[UnitArea::VACANT; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize]
 }
 
 fn print_screen(s: &Screen) {

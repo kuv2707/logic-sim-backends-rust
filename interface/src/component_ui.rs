@@ -1,22 +1,25 @@
 use bsim_engine::{
     components::Gate,
-    types::{CompType, CLOCK_PIN, ID},
+    types::{CompType, ID},
 };
 use egui::{vec2, Button, Color32, Rect, Response, Sense, Stroke, TextEdit, Ui, Vec2};
 
 use crate::{
-    app::DisplayData,
     consts::{GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
-    update_ops::UpdateOps,
+    display_elems::DisplayData,
+    update_ops::{CircuitUpdateOps, UiUpdateOps},
 };
+
+pub const PIN_BTN_SIZE: f32 = 20.0;
 
 pub fn paint_component(
     disp_params: &mut DisplayData,
     ui: &mut Ui,
     gate: &mut Gate,
     from: &mut Option<ID>,
-) -> Vec<UpdateOps> {
-    let mut emit_evts = Vec::<UpdateOps>::new();
+) -> (Vec<CircuitUpdateOps>, Vec<UiUpdateOps>) {
+    let mut ckt_evts = Vec::<CircuitUpdateOps>::new();
+    let mut ui_evts = Vec::<UiUpdateOps>::new();
     let container = egui::Rect::from_min_size(
         disp_params.logical_loc * GRID_UNIT_SIZE,
         disp_params.size * GRID_UNIT_SIZE,
@@ -40,14 +43,14 @@ pub fn paint_component(
         if i == 0 && !disp_params.is_clocked {
             continue;
         }
-        if add_pin_btn(container, *pos, ui, false).clicked() {
+        if add_pin_btn(container, *pos * GRID_UNIT_SIZE, ui, false).clicked() {
             let bks = is_ctrl_pressed(ui);
             match from {
                 Some(id) => {
-                    emit_evts.push(if bks {
-                        UpdateOps::Disconnect(*id, (disp_params.id, i))
+                    ckt_evts.push(if bks {
+                        CircuitUpdateOps::Disconnect(*id, (disp_params.id, i))
                     } else {
-                        UpdateOps::Connect(*id, (disp_params.id, i))
+                        CircuitUpdateOps::Connect(*id, (disp_params.id, i))
                     });
                 }
                 None => {}
@@ -57,7 +60,7 @@ pub fn paint_component(
 
     if add_pin_btn(
         container,
-        disp_params.output_loc_rel,
+        disp_params.output_loc_rel * GRID_UNIT_SIZE,
         ui,
         match from {
             Some(id) => disp_params.id == *id,
@@ -93,37 +96,45 @@ pub fn paint_component(
     if r.dragged() {
         let k = ui.input(|i| i.pointer.interact_pos().unwrap());
         let mut newx = (k.x / GRID_UNIT_SIZE) - disp_params.size.x / 2.0;
-        if newx + disp_params.size.x >= WINDOW_WIDTH {
-            newx = WINDOW_WIDTH - disp_params.size.x;
+        if newx + disp_params.size.x >= WINDOW_WIDTH - 2.0 {
+            // for safety
+            newx = WINDOW_WIDTH - disp_params.size.x - 2.0;
         }
-        if newx < 0.0 {
-            newx = 0.0;
+        if newx < 2.0 {
+            newx = 2.0;
         }
 
         let mut newy = (k.y / GRID_UNIT_SIZE) - disp_params.size.y / 2.0;
-        if newy + disp_params.size.y >= WINDOW_HEIGHT {
-            newy = WINDOW_HEIGHT - disp_params.size.y;
+        if newy + disp_params.size.y >= WINDOW_HEIGHT - 2.0 {
+            // for safety
+            newy = WINDOW_HEIGHT - disp_params.size.y - 2.0;
         }
-        if newy < 0.0 {
-            newy = 0.0;
+        if newy < 6.0 {
+            // to avoid menu buttons etc
+            newy = 6.0;
         }
 
         disp_params.logical_loc.x = newx;
         disp_params.logical_loc.y = newy;
+        ui_evts.push(UiUpdateOps::Dragged);
     }
 
     if r.clicked() {
         if is_ctrl_pressed(ui) {
-            emit_evts.push(UpdateOps::Remove(gate.id));
-        } else if gate.comp_type == CompType::Input {
-            emit_evts.push(UpdateOps::SetState(disp_params.id, !gate.state));
+            ckt_evts.push(CircuitUpdateOps::Remove(gate.id));
+            ui_evts.push(UiUpdateOps::RemoveComponent(gate.id));
+        } else {
+            ui_evts.push(UiUpdateOps::Select(disp_params.id));
+            if gate.comp_type == CompType::Input {
+                ckt_evts.push(CircuitUpdateOps::SetState(disp_params.id, !gate.state));
+            }
         }
     }
-    return emit_evts;
+    return (ckt_evts, ui_evts);
 }
 
 fn add_pin_btn(container: Rect, pos: Vec2, ui: &mut Ui, selected: bool) -> Response {
-    let brect = Rect::from_center_size(container.min + pos, vec2(20.0, 20.0));
+    let brect = Rect::from_center_size(container.min + pos, vec2(PIN_BTN_SIZE, PIN_BTN_SIZE));
     let mut btn = Button::new("");
     if selected {
         btn = btn.fill(Color32::YELLOW)

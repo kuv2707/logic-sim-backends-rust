@@ -4,8 +4,10 @@
 mod app;
 mod component_ui;
 mod consts;
-mod draw_conns;
+mod path_find;
 mod update_ops;
+mod state_handler_threads;
+mod display_elems;
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
