@@ -4,10 +4,10 @@
 mod app;
 mod component_ui;
 mod consts;
-mod path_find;
-mod update_ops;
-mod state_handler_threads;
 mod display_elems;
+mod path_find;
+mod state_handler_threads;
+mod update_ops;
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
@@ -32,7 +32,10 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Logic Simulator",
         native_options,
-        Box::new(|cc| Ok(Box::new(SimulatorUI::new()))),
+        Box::new(|cc| {
+            cc.egui_ctx.request_repaint();
+            return Ok(Box::new(SimulatorUI::new(cc.egui_ctx.clone())));
+        }),
     )
 }
 

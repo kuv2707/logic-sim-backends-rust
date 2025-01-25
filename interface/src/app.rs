@@ -11,14 +11,16 @@ use bsim_engine::{
     types::{CLOCK_PIN, ID, PIN},
 };
 use crossbeam::channel::{self, Sender};
-use egui::{pos2, vec2, Button, Color32, Layout, Painter, Pos2, Stroke, Ui, Vec2, Widget};
+use egui::{
+    pos2, vec2, Align, Button, Color32, Context, FontId, Layout, Painter, Pos2, Rect, Stroke, Ui,
+    Vec2, Widget,
+};
 
 use crate::{
-    component_ui::{paint_component, PIN_BTN_SIZE},
-    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
+    component_ui::{add_pin_btn, paint_component, PIN_BTN_SIZE},
+    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE},
     display_elems::{DisplayData, DisplayState, Screen, UnitArea, Wire},
-    path_find::a_star_get_pts,
-    state_handler_threads::{ckt_communicate, ui_update},
+    state_handler_threads::{ckt_communicate, toggle_clock, ui_update},
     update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
 };
 
@@ -33,10 +35,13 @@ pub struct SimulatorUI {
 }
 
 impl SimulatorUI {
-    pub fn new() -> Self {
+    pub fn new(ctx: Context) -> Self {
         let mut ckt = BCircuit::new();
         ckt.compile();
         ckt.power_on();
+        let clk_id = ckt.add_input("CLK", false);
+        ckt.clock(clk_id);
+
         let mut available_comp_defns: Vec<(String, usize)> = ckt
             .component_definitions
             .values()
@@ -51,7 +56,7 @@ impl SimulatorUI {
         let sync = Arc::new(Mutex::new(sync_state));
 
         let (ui_sender, ui_receiver) = channel::unbounded();
-        let display_state = Arc::new(Mutex::new(DisplayState::new()));
+        let display_state = Arc::new(Mutex::new(DisplayState::init_display_state(clk_id, ctx)));
 
         thread::spawn(ckt_communicate(
             ckt_receiver,
@@ -60,6 +65,7 @@ impl SimulatorUI {
             ui_sender.clone(),
         ));
         thread::spawn(ui_update(ui_receiver, display_state.clone()));
+        thread::spawn(toggle_clock(ckt.clone(), display_state.clone(), clk_id));
 
         let sim = Self {
             ckt,
@@ -93,14 +99,14 @@ impl SimulatorUI {
                         _ => ckt.add_component(name, "A").unwrap(),
                     };
                     let gate = ckt.get_component(&id).unwrap().borrow();
-                    let spc = 10.0 / (n_inp + 1) as f32;
                     let loc = egui::pos2(40.0 + 80.0 * i as f32, 100.0) / GRID_UNIT_SIZE;
-                    let size = (10.0, 10.0).into();
+                    let size: Vec2 = (8.0, 8.0).into();
+                    let spc = size.y / (n_inp + 1) as f32;
                     let input_locs_rel = (0..*n_inp + 1)
                         .map(|i| {
                             if i == 0 {
                                 // clock
-                                vec2(5.0, 10.0)
+                                vec2(size.x / 2.0, size.y)
                             } else {
                                 vec2(0.0, spc * i as f32)
                             }
@@ -108,27 +114,27 @@ impl SimulatorUI {
                         .collect();
                     let data = DisplayData {
                         logical_loc: loc,
-                        output_loc_rel: vec2(10.0, 5.0),
+                        name: name.into(),
+                        output_loc_rel: vec2(size.x, size.y / 2.0),
                         input_locs_rel,
                         id,
                         is_clocked: gate.clock_manager.is_some(),
                         scale: DEFAULT_SCALE,
                         size,
                     };
-                    {
-                        // display_data.insert(
-                        //     id,
-                        //     //todo: add various sizes for components and scale these fields accordingly
-                        //     data,
-                        // );
-                        send_event(ui_sender, UiUpdateOps::AddComponent(data));
-                    }
+
+                    send_event(ui_sender, UiUpdateOps::AddComponent(data));
                 }
             }
         });
         // print_screen(&display_state.screen);
         self.draw_connections(&display_state.wires, ui.painter());
 
+        ui.style_mut().text_styles.insert(
+            egui::TextStyle::Body,
+            FontId::new(8.0, egui::FontFamily::Monospace),
+        );
+        // drawing components
         for (id, disp_data) in display_state.display_data.iter_mut() {
             let gate = ckt.get_component(id).unwrap();
             let res = paint_component(disp_data, ui, &mut gate.borrow_mut(), &mut self.from);
@@ -139,7 +145,8 @@ impl SimulatorUI {
                 send_event(&self.ui_sender, evt);
             }
         }
-        ui.with_layout(Layout::right_to_left(egui::Align::Max), |ui| {
+
+        ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
             let btn = Button::new(if sync.is_synced() {
                 "Synced"
             } else {
@@ -160,12 +167,7 @@ impl SimulatorUI {
         for wire in wires.values() {
             // cloning might be bad!
             pt.line(
-                wire.pts
-                    .iter()
-                    .map(|k| {
-                        *k * GRID_UNIT_SIZE + 0.0 * vec2(PIN_BTN_SIZE / 2.0, PIN_BTN_SIZE / 2.0)
-                    })
-                    .collect(),
+                wire.pts.iter().map(|k| *k * GRID_UNIT_SIZE).collect(),
                 Stroke::new(wire.width, wire.col),
             );
         }

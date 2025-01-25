@@ -2,7 +2,10 @@ use bsim_engine::{
     components::Gate,
     types::{CompType, ID},
 };
-use egui::{vec2, Button, Color32, Rect, Response, Sense, Stroke, TextEdit, Ui, Vec2};
+use egui::{
+    epaint::CubicBezierShape, pos2, vec2, Button, Color32, FontId, Painter, Pos2, Rect, Response,
+    Rounding, Sense, Stroke, TextEdit, Ui, Vec2,
+};
 
 use crate::{
     consts::{GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
@@ -24,19 +27,10 @@ pub fn paint_component(
         disp_params.logical_loc * GRID_UNIT_SIZE,
         disp_params.size * GRID_UNIT_SIZE,
     );
+    let is_clk = disp_params.name == "CLK";
     let al = ui.allocate_rect(container, Sense::click_and_drag());
     if ui.is_rect_visible(container) {
-        let painter = ui.painter();
-        painter.rect_filled(
-            container,
-            8.0,
-            if gate.state {
-                egui::Color32::from_rgb(144, 238, 144)
-            } else {
-                egui::Color32::from_rgb(255, 102, 102)
-            },
-        );
-        painter.rect_stroke(container, 8.0, Stroke::new(2.0, Color32::BLACK));
+        draw_component_shape(ui.painter(), disp_params, container, gate.state);
     }
 
     for (i, pos) in disp_params.input_locs_rel.iter().enumerate() {
@@ -82,15 +76,17 @@ pub fn paint_component(
         }
     }
 
-    let ted = TextEdit::singleline(&mut gate.label).hint_text("label");
-    ui.put(
-        Rect::from_center_size(container.center(), vec2(50.0, 10.0)),
-        ted,
-    );
-    ui.put(
-        Rect::from_center_size(container.center() + vec2(0., 20.0), vec2(50.0, 10.0)),
-        Button::new(&gate.name),
-    );
+    if !is_clk {
+        let ted = TextEdit::singleline(&mut gate.label).hint_text("label");
+        let min =
+            container.left_top() + (35.0, disp_params.size.y * GRID_UNIT_SIZE / 2.0 - 8.0).into();
+        ui.put(Rect::from_min_max(min, min + (4.0, 8.0).into()), ted);
+    } else {
+        ui.put(
+            Rect::from_center_size(container.center() + vec2(0., 0.0), vec2(50.0, 10.0)),
+            Button::new(&disp_params.name),
+        );
+    }
 
     let r = ui.interact(container, al.id, Sense::click_and_drag());
     if r.dragged() {
@@ -119,7 +115,7 @@ pub fn paint_component(
         ui_evts.push(UiUpdateOps::Dragged);
     }
 
-    if r.clicked() {
+    if r.clicked() && !is_clk {
         if is_ctrl_pressed(ui) {
             ckt_evts.push(CircuitUpdateOps::Remove(gate.id));
             ui_evts.push(UiUpdateOps::RemoveComponent(gate.id));
@@ -133,15 +129,125 @@ pub fn paint_component(
     return (ckt_evts, ui_evts);
 }
 
-fn add_pin_btn(container: Rect, pos: Vec2, ui: &mut Ui, selected: bool) -> Response {
+pub fn add_pin_btn(container: Rect, pos: Vec2, ui: &mut Ui, selected: bool) -> Response {
     let brect = Rect::from_center_size(container.min + pos, vec2(PIN_BTN_SIZE, PIN_BTN_SIZE));
-    let mut btn = Button::new("");
-    if selected {
-        btn = btn.fill(Color32::YELLOW)
-    }
-    ui.put(brect, btn)
+    ui.painter().rect_filled(
+        brect,
+        Rounding::same(12.0),
+        if selected {
+            Color32::YELLOW
+        } else {
+            Color32::GRAY
+        },
+    );
+    let al = ui.allocate_rect(brect, Sense::click_and_drag());
+    ui.interact(brect, al.id, Sense::click())
 }
 
 fn is_ctrl_pressed(ui: &Ui) -> bool {
     ui.input(|rd| rd.modifiers.mac_cmd || rd.modifiers.ctrl)
+}
+
+fn draw_component_shape(
+    painter: &Painter,
+    disp_params: &DisplayData,
+    container: Rect,
+    state: bool,
+) {
+    let color = if state {
+        egui::Color32::from_rgb(144, 238, 144)
+    } else {
+        egui::Color32::from_rgb(255, 102, 102)
+    };
+    let stroke = Stroke::new(2.0, color);
+    let name = disp_params.name.as_str();
+    match name {
+        "Input" => {
+            let mut pts: Vec<Pos2> = vec![
+                (0., 2.0).into(),
+                (5.0, 2.0).into(),
+                (7., 4.0).into(),
+                (5., 6.0).into(),
+                (0., 6.0).into(),
+            ];
+            pts.push(pts[0]);
+            draw_path(painter, pts, stroke, container, state);
+        }
+        "NOT" | "BFR" => {
+            let mut pts: Vec<Pos2> = vec![
+                (1., 4.0).into(),
+                (2.0, 4.0).into(),
+                (2., 1.0).into(),
+                (6., 4.0).into(),
+                (8., 4.0).into(),
+                (6., 4.0).into(),
+                (2., 7.0).into(),
+                (2., 4.0).into(),
+            ];
+            pts.push(pts[0]);
+            draw_path(painter, pts, stroke, container, state);
+            if name == "NOT" {
+                painter.circle(
+                    container.left_top() + vec2(6.0 * GRID_UNIT_SIZE + 4.0, 4.0 * GRID_UNIT_SIZE),
+                    2.5,
+                    color,
+                    stroke,
+                );
+            }
+        }
+        "AND" => {
+            let tl = container.left_top();
+            painter.add(CubicBezierShape::from_points_stroke(
+                [
+                    tl + vec2(1.3, 1.0) * GRID_UNIT_SIZE,
+                    tl + vec2(8.3, 1.0) * GRID_UNIT_SIZE,
+                    tl + vec2(8.3, 7.0) * GRID_UNIT_SIZE,
+                    tl + vec2(1.3, 7.0) * GRID_UNIT_SIZE,
+                ],
+                true,
+                Color32::TRANSPARENT,
+                stroke,
+            ));
+            draw_path(
+                painter,
+                vec![(6.66, 4.0).into(), (8.0, 4.0).into()],
+                stroke,
+                container,
+                state,
+            );
+            for (i, inp) in disp_params.input_locs_rel.iter().enumerate() {
+                if i == 0 && !disp_params.is_clocked {
+                    continue;
+                }
+                draw_path(
+                    painter,
+                    vec![(0., inp.y).into(), (1.3, inp.y).into()],
+                    stroke,
+                    container,
+                    state,
+                );
+            }
+        }
+        _ => {
+            painter.rect_filled(
+                container,
+                8.0,
+                if state {
+                    egui::Color32::from_rgb(144, 238, 144)
+                } else {
+                    egui::Color32::from_rgb(255, 102, 102)
+                },
+            );
+        }
+    };
+    // painter.rect_stroke(container, 8.0, Stroke::new(2.0, Color32::BLACK));
+}
+
+fn draw_path(painter: &Painter, pts: Vec<Pos2>, stroke: Stroke, container: Rect, state: bool) {
+    painter.line(
+        pts.iter()
+            .map(|p| container.left_top() + p.to_vec2() * GRID_UNIT_SIZE)
+            .collect(),
+        stroke,
+    );
 }

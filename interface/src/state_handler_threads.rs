@@ -1,6 +1,8 @@
 use std::{
     cmp::{max, min},
     sync::{Arc, Mutex},
+    thread::{self, sleep},
+    time::Duration,
 };
 
 use bsim_engine::{
@@ -16,6 +18,27 @@ use crate::{
     path_find::a_star_get_pts,
     update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
 };
+
+pub fn toggle_clock(
+    ckt: Arc<Mutex<BCircuit>>,
+    display_state: Arc<Mutex<DisplayState>>,
+    clk_id: ID,
+) -> impl Fn() {
+    move || loop {
+        let delay;
+        {
+            // put in a scope to release the locks before the thread sleeps.
+            let mut ckt = ckt.lock().unwrap();
+            // .pulse_clock();
+            let new_state = !ckt.state(clk_id).unwrap();
+            ckt.set_component_state(clk_id, new_state).unwrap();
+            let ds = display_state.lock().unwrap();
+            ds.ctx.request_repaint();
+            delay = ds.clk_t;
+        }
+        thread::sleep(Duration::from_millis(delay));
+    }
+}
 
 pub fn ckt_communicate(
     receiver: Receiver<CircuitUpdateOps>,

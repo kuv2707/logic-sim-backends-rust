@@ -140,7 +140,6 @@ impl Gate {
         Ok(())
     }
     pub(crate) fn set_pin_val(&mut self, pin: PIN, val: bool) {
-        println!("{} {} {}", self.label, pin, val);
         if pin == CLOCK_PIN {
             if let Some(cm) = &mut self.clock_manager {
                 cm.push(val);
