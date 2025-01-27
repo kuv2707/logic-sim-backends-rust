@@ -23,15 +23,16 @@ pub struct Gate {
     pub name: String,
     pub id: ID,
     pub comp_type: CompType,
-    pub label: String,
+    pub label: String, //todo: shift to comp_type
     eval: BinaryLogicReducer,
     pub state: bool,
     pub(crate) output_recvlist: HashSet<(ID, PIN)>,
+    #[deprecated(note = "Compute from vector sizes of `self.input_pin_values`")]
     n_inp: usize,
     pub symbol: String,
     input_pin_values: Vec<bool>,
     pub input_pin_sources: Vec<ID>,
-    in_exprs: Vec<String>,
+    input_pin_exprs: Vec<String>,
     pub state_expr: String,
     pub clock_manager: Option<ClockManager>,
 }
@@ -53,11 +54,12 @@ impl Gate {
             // 0th pin is the clock pin
             input_pin_values: vec![false; n_inp],
             input_pin_sources: vec![NULL; n_inp],
-            in_exprs: vec![String::new(); n_inp],
+            input_pin_exprs: vec![String::new(); n_inp],
             state_expr: String::new(),
+
             clock_manager: None,
         };
-        if c.n_inp > 0 {
+        if n_inp > 0 {
             // not doing for inputs etc
             c.state = (c.eval)(&c.input_pin_values, false); // sound initial assumption
         }
@@ -80,6 +82,9 @@ impl Gate {
         c.state = init;
         c.state_expr = lab.to_string();
         c
+    }
+    pub fn num_inputs(&self) -> usize {
+        self.input_pin_exprs.len()
     }
     pub fn set_state(&mut self, state: bool) {
         self.state = state;
@@ -105,37 +110,41 @@ impl Gate {
     pub fn get_output_receivers(&self) -> &HashSet<(ID, PIN)> {
         return &self.output_recvlist;
     }
-    pub fn set_input_pin_connection(
-        &mut self,
-        pin: PIN,
-        emitter_id: ID,
-        emitter_state: bool,
-    ) -> Result<(), String> {
-        if pin >= self.n_inp {
+    pub fn set_input_pin_connection(&mut self, pin: PIN, emitter: &Gate) -> Result<(), String> {
+        if pin >= self.num_inputs() {
             return Err(format!(
                 "Only have {} input pins in {}, can't access pin_{}",
-                self.n_inp, self.name, pin,
+                self.num_inputs(),
+                self.name,
+                pin,
             ));
+        }
+        if self.input_pin_sources[pin] != NULL {
+            return Err(format!("Please disconnect it first!"));
         }
         // we do allow setting CLOCK_PIN`th index for non clocked compos
         // they are simply never used
-        self.input_pin_values[pin as usize] = emitter_state;
-        self.input_pin_sources[pin as usize] = emitter_id;
+        self.input_pin_values[pin as usize] = emitter.state;
+        self.input_pin_sources[pin as usize] = emitter.id;
+        self.input_pin_exprs[pin as usize].push_str(&emitter.state_expr);
 
         Ok(())
     }
     pub fn clear_input_pin_connection(&mut self, pin: PIN) -> Result<(), String> {
-        if pin >= self.n_inp {
+        if pin >= self.num_inputs() {
             return Err(format!(
                 "Only have {} input pins in {}, can't clear pin_{}",
-                self.n_inp, self.name, pin,
+                self.num_inputs(),
+                self.name,
+                pin,
             ));
         }
         // we do allow setting CLOCK_PIN`th index for non clocked compos
         // they are simply never used
         // println!("{} inppin_{} val {}", self.label, pin, false);
-        self.input_pin_values[pin as usize] = false;
-        self.input_pin_sources[pin as usize] = NULL;
+        self.input_pin_values[pin] = false;
+        self.input_pin_sources[pin] = NULL;
+        self.input_pin_exprs[pin].clear();
 
         Ok(())
     }
@@ -147,23 +156,8 @@ impl Gate {
         }
         self.input_pin_values[pin] = val;
     }
-    pub fn set_pin_expr(&mut self, pin: PIN, val: String) -> Result<(), String> {
-        // todo: do it "WELL"
-        // if *pin == CLOCK_PIN {
-        //     match &mut self.clock_manager {
-        //         Some(k) => {
-        //             // println!("trig {}",self.label);
-        //             k.clk_expr(val)
-        //         }
-        //         None => return Err(String::from("This is not a clocked component")),
-        //     }
-        // } else {
-        //     self.in_exprs[*pin as usize - 1] = val;
-        // }
-        Ok(())
-    }
-    pub fn num_inps(&self) -> usize {
-        return self.n_inp;
+    pub fn set_pin_expr(&mut self, pin: PIN, val: &str) {
+        self.input_pin_exprs[pin].replace_range(.., &val);
     }
 }
 
@@ -230,32 +224,23 @@ fn state_update(
     }
 }
 
-pub fn evaluate_component_expression(
-    c: &mut Gate,
-    mp: &HashMap<i32, RefCell<Gate>>,
-    exec_q: &mut VecDeque<ID>,
-) {
-    if !c.name.eq("Input") && c.clock_manager.is_none() {
-        let old_expr = &c.state_expr;
-        let new_expr = form_expr(&c.in_exprs, &c.symbol);
-        if new_expr.eq(old_expr) {
+pub(crate) fn set_expressions(c: &mut Gate, mp: &HashMap<i32, RefCell<Gate>>, exec_q: &mut VecDeque<ID>) {
+    match c.comp_type {
+        CompType::Combinational => c.state_expr = form_expr(&c.input_pin_exprs, &c.symbol),
+        _ => {
+            c.state_expr = c.label.clone();
             return;
-        }
-        c.state_expr = new_expr;
-        if c.label.is_empty() {
-            c.label.push_str(&c.state_expr);
         }
     }
     for (id, pin) in &c.output_recvlist {
-        let ele = mp.get(id);
-        if ele.is_none() {
-            eprintln!("No element with id {}", id);
-        }
-        let mut ele = ele.unwrap().borrow_mut();
-        ele.set_pin_expr(*pin, c.state_expr.clone()).unwrap();
-        // optimization to the exec_queue. If there are same id's
-        // in succession, we don't need to run update for each.
-        // Just updating once suffices.
+        let mut ele = mp
+            .get(id)
+            .expect(&format!("Expected id_{} to be present", id))
+            .borrow_mut();
+
+        // println!("from {} to {} {} : {}", c.label, ele.label, pin, c.state);
+        ele.set_pin_expr(*pin, c.state_expr.as_str());
+
         if exec_q.is_empty() || *exec_q.back().unwrap() != *id {
             exec_q.push_back(*id);
         }
@@ -278,7 +263,7 @@ impl fmt::Display for Gate {
             if self.n_inp == 1 { "" } else { "s" },
             self.symbol,
             state_str,
-            self.in_exprs.join("  \n")
+            self.input_pin_exprs.join("  \n")
         )
     }
 }

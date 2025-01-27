@@ -1,8 +1,7 @@
 use crate::{
     bootstrap::bootstrap_ckt,
     components::{
-        evaluate_component_expression, power_on_component, update_component_state,
-        ComponentDefParams, Gate,
+        power_on_component, set_expressions, update_component_state, ComponentDefParams, Gate,
     },
     table::{bitwise_counter, Table},
     types::{CompType, ComponentActor, ID, NULL, PIN},
@@ -14,6 +13,9 @@ use std::{
 
 pub struct BCircuit {
     pub component_definitions: HashMap<String, ComponentDefParams>,
+    // todo: Maybe using RC<Refcell<>> will ease connection management
+    // since then each gate would only hold a reference to neighbouring
+    // gates instead of separately storing state, expr, src.
     components: HashMap<ID, RefCell<Gate>>,
 
     // actual input components reside in the `components`
@@ -206,6 +208,7 @@ impl BCircuit {
             return res;
         }
         self.graph_act(update_component_state, &vec![receiver_id]);
+        self.graph_act(set_expressions, &vec![receiver_id]);
         Ok(())
     }
     fn do_connect(&mut self, receiver_id: ID, pin: PIN, emitter_id: ID) -> Result<(), String> {
@@ -215,14 +218,20 @@ impl BCircuit {
         if !self.components.contains_key(&emitter_id) {
             return Err(format!("No emitter with id {}", emitter_id));
         }
+        if receiver_id == emitter_id {
+            return Err(format!(
+                "id_{} Self connection is not supported, please use a buffer.",
+                receiver_id
+            ));
+        }
 
         let receiver = self.components.get(&receiver_id).unwrap();
         let emitter = self.components.get(&emitter_id).unwrap();
 
-        if pin >= receiver.borrow().num_inps() {
+        if pin >= receiver.borrow().num_inputs() {
             return Err(format!(
                 "There are only {} pins, can't access {}",
-                receiver.borrow().num_inps(),
+                receiver.borrow().num_inputs(),
                 pin
             ));
         }
@@ -233,12 +242,14 @@ impl BCircuit {
         // - stores emitter.id as input source at that pin
         // - receiver propagates its new state further
 
+        // todo: If emitter and receiver are same, we'd need to handle this
+        // separately.
+
         emitter.borrow_mut().link_output_receiver(receiver_id, pin);
 
-        let emitter_state = emitter.borrow().state;
         receiver
             .borrow_mut()
-            .set_input_pin_connection(pin, emitter_id, emitter_state)
+            .set_input_pin_connection(pin, &emitter.borrow())
             .unwrap();
         return Ok(());
     }
@@ -248,7 +259,7 @@ impl BCircuit {
             return res;
         }
         self.graph_act(update_component_state, &vec![receiver_id]);
-
+        self.graph_act(set_expressions, &vec![receiver_id]);
         Ok(())
     }
     fn do_disconnect(&mut self, receiver_id: ID, pin: PIN, emitter_id: ID) -> Result<(), String> {
@@ -287,8 +298,7 @@ impl BCircuit {
         // 1. we generate boolean expression for each component
         // in the circuit.
         // 2. we check for dangerous loops.
-        // 3. we create input/output expression for each component
-        self.graph_act(evaluate_component_expression, &self.all_inputs_and_states());
+        // todo
     }
     pub fn all_inputs_and_states(&self) -> Vec<ID> {
         // excludes clk
@@ -503,7 +513,6 @@ mod tests {
         let q = c.add_component("JK", "Q1").unwrap();
         let qq = c.add_component("JK", "Q2").unwrap();
         let n = c.add_component("NOT", "!Q1").unwrap();
-        
 
         c.connect(q, 1, one).unwrap();
         c.connect(q, 2, one).unwrap();
@@ -524,7 +533,6 @@ mod tests {
         assert_eq!((c.state(q).unwrap(), c.state(qq).unwrap()), (false, true));
         c.pulse_clock();
         assert_eq!((c.state(q).unwrap(), c.state(qq).unwrap()), (true, true));
-
     }
 
     #[test]
@@ -541,5 +549,41 @@ mod tests {
         c.remove_component(n1).unwrap();
         assert_eq!(c.components.get(&n1).is_none(), true);
         assert_eq!(c.state(n2).unwrap(), true);
+    }
+
+    #[test]
+    fn sample_comb_ckt() {
+        let mut c = BCircuit::new();
+        let i1 = c.add_input("A", !false);
+        let i2 = c.add_input("B", false);
+        let i3 = c.add_input("C", true);
+
+        let n1 = c.add_component("NOT", "not1").unwrap();
+        let n2 = c.add_component("NOT", "not2").unwrap();
+        let or = c.add_component("OR", "F1").unwrap();
+
+        let a1 = c.add_component("AND", "AB").unwrap();
+        let a2 = c.add_component("AND", "").unwrap();
+        let a3 = c.add_component("AND", "").unwrap();
+
+        c.connect(n1, 1, i1).unwrap();
+        c.connect(n2, 1, i2).unwrap();
+
+        c.connect(a1, 1, i1).unwrap();
+        c.connect(a1, 2, i2).unwrap();
+
+        c.connect(a2, 1, n1).unwrap();
+        c.connect(a2, 2, n2).unwrap();
+
+        c.connect(a3, 1, a2).unwrap();
+        c.connect(a3, 2, i3).unwrap();
+
+        c.connect(or, 1, a3).unwrap();
+        c.connect(or, 2, a1).unwrap();
+
+        c.track_output(or);
+        c.compile();
+        c.power_on();
+        println!("{}", c.components.get(&or).unwrap().borrow().state_expr);
     }
 }
