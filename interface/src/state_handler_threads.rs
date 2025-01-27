@@ -69,7 +69,10 @@ pub fn ckt_communicate(
                 }
                 res
             }
-            CircuitUpdateOps::Remove(id) => ckt.remove_component(id),
+            CircuitUpdateOps::Remove(id) => {
+                let res = ckt.remove_component(id);
+                res
+            },
         };
 
         let mut s = sync.lock().unwrap();
@@ -102,6 +105,15 @@ pub fn ui_update(
                 ds.display_data.remove(&id);
                 clear_screen(&mut ds.screen);
                 mark_obstacles(ds);
+                let mut remove_list = Vec::new();
+                for wire in ds.wires.keys() {
+                    if wire.0 == id || wire.1.0 == id {
+                        remove_list.push(*wire);
+                    }
+                }
+                for rem_key in remove_list {
+                    ds.wires.remove(&rem_key);
+                }
             }
             UiUpdateOps::Connect(rec_id, (send_id, pin)) => {
                 let pts = find_path(ds, &send_id, &rec_id, pin);
