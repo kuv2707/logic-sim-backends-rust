@@ -72,7 +72,7 @@ pub fn ckt_communicate(
             CircuitUpdateOps::Remove(id) => {
                 let res = ckt.remove_component(id);
                 res
-            },
+            }
         };
 
         let mut s = sync.lock().unwrap();
@@ -102,12 +102,17 @@ pub fn ui_update(
                 update_wires(ds);
             }
             UiUpdateOps::RemoveComponent(id) => {
+                // between the remove_component being called on the ckt
+                // and this code executing (removing the id from display_data)
+                // if the user drags, a drag event would be sent, but that would
+                // be sequenced after this code, so there's no chance of a 
+                // transient inconsistent state causing the app to crash.
                 ds.display_data.remove(&id);
                 clear_screen(&mut ds.screen);
                 mark_obstacles(ds);
                 let mut remove_list = Vec::new();
                 for wire in ds.wires.keys() {
-                    if wire.0 == id || wire.1.0 == id {
+                    if wire.0 == id || wire.1 .0 == id {
                         remove_list.push(*wire);
                     }
                 }
