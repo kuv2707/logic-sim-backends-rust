@@ -91,7 +91,7 @@ pub fn paint_component(
     let r = ui.interact(container, al.id, Sense::click_and_drag());
     if r.dragged() {
         let k = ui.input(|i| i.pointer.interact_pos().unwrap());
-        let mut newx = (k.x / GRID_UNIT_SIZE) - disp_params.size.x / 2.0;
+        let mut newx = (k.x / GRID_UNIT_SIZE).floor() - disp_params.size.x / 2.0;
         if newx + disp_params.size.x >= WINDOW_WIDTH - 2.0 {
             // for safety
             newx = WINDOW_WIDTH - disp_params.size.x - 2.0;
@@ -100,7 +100,7 @@ pub fn paint_component(
             newx = 2.0;
         }
 
-        let mut newy = (k.y / GRID_UNIT_SIZE) - disp_params.size.y / 2.0;
+        let mut newy = (k.y / GRID_UNIT_SIZE).floor() - disp_params.size.y / 2.0;
         if newy + disp_params.size.y >= WINDOW_HEIGHT - 2.0 {
             // for safety
             newy = WINDOW_HEIGHT - disp_params.size.y - 2.0;
@@ -195,13 +195,13 @@ fn draw_component_shape(
                 );
             }
         }
-        "AND" => {
+        "AND" | "NAND" => {
             let tl = container.left_top();
             painter.add(CubicBezierShape::from_points_stroke(
                 [
                     tl + vec2(1.3, 1.0) * GRID_UNIT_SIZE,
-                    tl + vec2(8.3, 1.0) * GRID_UNIT_SIZE,
-                    tl + vec2(8.3, 7.0) * GRID_UNIT_SIZE,
+                    tl + vec2(8.0, 1.0) * GRID_UNIT_SIZE,
+                    tl + vec2(8.0, 7.0) * GRID_UNIT_SIZE,
                     tl + vec2(1.3, 7.0) * GRID_UNIT_SIZE,
                 ],
                 true,
@@ -210,7 +210,7 @@ fn draw_component_shape(
             ));
             draw_path(
                 painter,
-                vec![(6.66, 4.0).into(), (8.0, 4.0).into()],
+                vec![(6.55, 4.0).into(), (8.0, 4.0).into()],
                 stroke,
                 container,
                 state,
@@ -225,6 +225,14 @@ fn draw_component_shape(
                     stroke,
                     container,
                     state,
+                );
+            }
+            if name == "NAND" {
+                painter.circle(
+                    container.left_top() + vec2(6.0 * GRID_UNIT_SIZE + 4.0, 4.0 * GRID_UNIT_SIZE),
+                    2.5,
+                    color,
+                    stroke,
                 );
             }
         }
