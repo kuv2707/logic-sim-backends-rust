@@ -8,6 +8,7 @@ pub enum CircuitUpdateOps {
     Connect(ID, (ID, PIN)),
     Disconnect(ID, (ID, PIN)),
     Remove(ID),
+    SetComponentLabel(ID, String, String),
 }
 #[derive(PartialEq, Eq)]
 pub enum SyncState {
@@ -38,5 +39,5 @@ pub enum UiUpdateOps {
     RemoveComponent(ID),
     Connect(ID, (ID, PIN)),
     Disconnect(ID, (ID, PIN)),
-    Select(ID)
+    Select(ID),
 }

@@ -14,8 +14,8 @@ pub enum UnitArea {
 pub type Screen = [[UnitArea; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize];
 
 pub struct Wire {
+    pub emitter_id: ID,
     pub pts: Vec<Pos2>,
-    pub col: Color32,
     pub width: f32,
 }
 
@@ -26,6 +26,7 @@ pub struct DisplayData {
     // this component begins, not the px values
     pub logical_loc: Pos2,
     pub name: String,
+    pub label: String,
     // these are relative to loc but are in px
     pub output_loc_rel: Vec2,
     pub input_locs_rel: Vec<Vec2>,
@@ -70,6 +71,7 @@ impl DisplayState {
                 scale: DEFAULT_SCALE,
                 size,
                 name: "CLK".into(),
+                label: "CLK".into(),
             },
         );
         this

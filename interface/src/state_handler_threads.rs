@@ -55,7 +55,7 @@ pub fn ckt_communicate(
                 let res = ckt.connect(receiver_id, pin, emitter_id);
                 if res.is_ok() {
                     ui_sender
-                        .send(UiUpdateOps::Connect(receiver_id, (emitter_id, pin)))
+                        .send(UiUpdateOps::Connect(emitter_id, (receiver_id, pin)))
                         .unwrap();
                 }
                 res
@@ -72,6 +72,10 @@ pub fn ckt_communicate(
             CircuitUpdateOps::Remove(id) => {
                 let res = ckt.remove_component(id);
                 res
+            }
+            CircuitUpdateOps::SetComponentLabel(id, old_label, new_label) => {
+                // old_label is for undo support
+                ckt.set_component_label(id, &new_label)
             }
         };
 
@@ -105,7 +109,7 @@ pub fn ui_update(
                 // between the remove_component being called on the ckt
                 // and this code executing (removing the id from display_data)
                 // if the user drags, a drag event would be sent, but that would
-                // be sequenced after this code, so there's no chance of a 
+                // be sequenced after this code, so there's no chance of a
                 // transient inconsistent state causing the app to crash.
                 ds.display_data.remove(&id);
                 clear_screen(&mut ds.screen);
@@ -120,14 +124,14 @@ pub fn ui_update(
                     ds.wires.remove(&rem_key);
                 }
             }
-            UiUpdateOps::Connect(rec_id, (send_id, pin)) => {
-                let pts = find_path(ds, &send_id, &rec_id, pin);
+            UiUpdateOps::Connect(emitter_id, (rec_id, pin)) => {
+                let pts = find_path(ds, &emitter_id, &rec_id, pin);
                 ds.wires.insert(
-                    (send_id, (rec_id, pin)),
+                    (emitter_id, (rec_id, pin)),
                     Wire {
                         pts,
-                        col: Color32::WHITE, // todo: replace with sth else if component is selected
-                        width: 2.0,          // todo: make bolder when component is selected
+                        emitter_id,
+                        width: 2.0, // todo: make bolder when component is selected
                     },
                 );
             }

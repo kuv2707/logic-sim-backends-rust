@@ -32,7 +32,7 @@ pub struct Gate {
     pub symbol: String,
     input_pin_values: Vec<bool>,
     pub input_pin_sources: Vec<ID>,
-    input_pin_exprs: Vec<String>,
+    pub input_pin_exprs: Vec<String>,
     pub state_expr: String,
     pub clock_manager: Option<ClockManager>,
 }
@@ -229,7 +229,6 @@ pub(crate) fn set_expressions(c: &mut Gate, mp: &HashMap<i32, RefCell<Gate>>, ex
         CompType::Combinational => c.state_expr = form_expr(&c.input_pin_exprs, &c.symbol),
         _ => {
             c.state_expr = c.label.clone();
-            return;
         }
     }
     for (id, pin) in &c.output_recvlist {

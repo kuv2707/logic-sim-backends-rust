@@ -37,7 +37,16 @@ pub fn paint_component(
         if i == 0 && !disp_params.is_clocked {
             continue;
         }
-        if add_pin_btn(container, *pos * GRID_UNIT_SIZE, ui, false).clicked() {
+        if add_pin_btn(
+            container,
+            // doesn't align with wires in AND etc
+            *pos * GRID_UNIT_SIZE,
+            ui,
+            false,
+            &gate.input_pin_exprs[i],
+        )
+        .clicked()
+        {
             let bks = is_ctrl_pressed(ui);
             match from {
                 Some(id) => {
@@ -60,6 +69,7 @@ pub fn paint_component(
             Some(id) => disp_params.id == *id,
             None => false,
         },
+        &gate.state_expr,
     )
     .clicked()
     {
@@ -77,14 +87,23 @@ pub fn paint_component(
     }
 
     if !is_clk {
-        let ted = TextEdit::singleline(&mut gate.label).hint_text("label");
+        let ted = TextEdit::singleline(&mut disp_params.label).hint_text("label");
         let min =
-            container.left_top() + (35.0, disp_params.size.y * GRID_UNIT_SIZE / 2.0 - 8.0).into();
-        ui.put(Rect::from_min_max(min, min + (4.0, 8.0).into()), ted);
+            container.left_top() + (30.0, disp_params.size.y * GRID_UNIT_SIZE / 2.0 - 8.0).into();
+        if ui
+            .put(Rect::from_min_max(min, min + (4.0, 8.0).into()), ted)
+            .lost_focus()
+        {
+            ckt_evts.push(CircuitUpdateOps::SetComponentLabel(
+                disp_params.id,
+                gate.label.clone(),
+                disp_params.label.clone(),
+            ));
+        }
     } else {
         ui.put(
             Rect::from_center_size(container.center() + vec2(0., 0.0), vec2(50.0, 10.0)),
-            Button::new(&disp_params.name),
+            Button::new(&disp_params.label),
         );
     }
 
@@ -129,7 +148,13 @@ pub fn paint_component(
     return (ckt_evts, ui_evts);
 }
 
-pub fn add_pin_btn(container: Rect, pos: Vec2, ui: &mut Ui, selected: bool) -> Response {
+pub fn add_pin_btn(
+    container: Rect,
+    pos: Vec2,
+    ui: &mut Ui,
+    selected: bool,
+    input_expr: &str,
+) -> Response {
     let brect = Rect::from_center_size(container.min + pos, vec2(PIN_BTN_SIZE, PIN_BTN_SIZE));
     ui.painter().rect_filled(
         brect,
@@ -140,8 +165,12 @@ pub fn add_pin_btn(container: Rect, pos: Vec2, ui: &mut Ui, selected: bool) -> R
             Color32::GRAY
         },
     );
-    let al = ui.allocate_rect(brect, Sense::click_and_drag());
-    ui.interact(brect, al.id, Sense::click())
+    let mut al = ui.allocate_rect(brect, Sense::click_and_drag());
+    if input_expr.len() > 0 {
+        al = al.on_hover_text(input_expr);
+    }
+    let res = ui.interact(brect, al.id, Sense::click_and_drag());
+    res
 }
 
 fn is_ctrl_pressed(ui: &Ui) -> bool {
@@ -174,17 +203,15 @@ fn draw_component_shape(
             draw_path(painter, pts, stroke, container, state);
         }
         "NOT" | "BFR" => {
-            let mut pts: Vec<Pos2> = vec![
-                (1., 4.0).into(),
-                (2.0, 4.0).into(),
-                (2., 1.0).into(),
+            let pts: Vec<Pos2> = vec![
+                (0.0, 4.0).into(),
+                (0., 0.0).into(),
                 (6., 4.0).into(),
                 (8., 4.0).into(),
                 (6., 4.0).into(),
-                (2., 7.0).into(),
-                (2., 4.0).into(),
+                (0., 8.0).into(),
+                (0., 4.0).into(),
             ];
-            pts.push(pts[0]);
             draw_path(painter, pts, stroke, container, state);
             if name == "NOT" {
                 painter.circle(
@@ -199,10 +226,10 @@ fn draw_component_shape(
             let tl = container.left_top();
             painter.add(CubicBezierShape::from_points_stroke(
                 [
-                    tl + vec2(1.3, 1.0) * GRID_UNIT_SIZE,
+                    tl + vec2(0., 1.0) * GRID_UNIT_SIZE,
                     tl + vec2(8.0, 1.0) * GRID_UNIT_SIZE,
                     tl + vec2(8.0, 7.0) * GRID_UNIT_SIZE,
-                    tl + vec2(1.3, 7.0) * GRID_UNIT_SIZE,
+                    tl + vec2(0., 7.0) * GRID_UNIT_SIZE,
                 ],
                 true,
                 Color32::TRANSPARENT,
@@ -210,23 +237,12 @@ fn draw_component_shape(
             ));
             draw_path(
                 painter,
-                vec![(6.55, 4.0).into(), (8.0, 4.0).into()],
+                vec![(6., 4.0).into(), (8.0, 4.0).into()],
                 stroke,
                 container,
                 state,
             );
-            for (i, inp) in disp_params.input_locs_rel.iter().enumerate() {
-                if i == 0 && !disp_params.is_clocked {
-                    continue;
-                }
-                draw_path(
-                    painter,
-                    vec![(0., inp.y).into(), (1.3, inp.y).into()],
-                    stroke,
-                    container,
-                    state,
-                );
-            }
+
             if name == "NAND" {
                 painter.circle(
                     container.left_top() + vec2(6.0 * GRID_UNIT_SIZE + 4.0, 4.0 * GRID_UNIT_SIZE),
@@ -252,6 +268,7 @@ fn draw_component_shape(
 }
 
 fn draw_path(painter: &Painter, pts: Vec<Pos2>, stroke: Stroke, container: Rect, state: bool) {
+    // todo: optionally fill with a color.
     painter.line(
         pts.iter()
             .map(|p| container.left_top() + p.to_vec2() * GRID_UNIT_SIZE)

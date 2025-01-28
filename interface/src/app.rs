@@ -58,14 +58,23 @@ impl SimulatorUI {
         let (ui_sender, ui_receiver) = channel::unbounded();
         let display_state = Arc::new(Mutex::new(DisplayState::init_display_state(clk_id, ctx)));
 
-        thread::spawn(ckt_communicate(
-            ckt_receiver,
-            ckt.clone(),
-            sync.clone(),
-            ui_sender.clone(),
-        ));
-        thread::spawn(ui_update(ui_receiver, display_state.clone()));
-        thread::spawn(toggle_clock(ckt.clone(), display_state.clone(), clk_id));
+        thread::Builder::new()
+            .name("ckt-module-communicate".into())
+            .spawn(ckt_communicate(
+                ckt_receiver,
+                ckt.clone(),
+                sync.clone(),
+                ui_sender.clone(),
+            ))
+            .expect("Failed to spawn thread");
+        thread::Builder::new()
+            .name("ui-update".into())
+            .spawn(ui_update(ui_receiver, display_state.clone()))
+            .expect("Failed to spawn thread");
+        thread::Builder::new()
+            .name("ckt-clock-toggle".into())
+            .spawn(toggle_clock(ckt.clone(), display_state.clone(), clk_id))
+            .expect("Failed to spawn thread");
 
         let sim = Self {
             ckt,
@@ -115,6 +124,7 @@ impl SimulatorUI {
                     let data = DisplayData {
                         logical_loc: loc,
                         name: name.into(),
+                        label: gate.label.clone(),
                         output_loc_rel: vec2(size.x, size.y / 2.0),
                         input_locs_rel,
                         id,
@@ -128,7 +138,7 @@ impl SimulatorUI {
             }
         });
         // print_screen(&display_state.screen);
-        self.draw_connections(&display_state.wires, ui.painter());
+        self.draw_connections(&ckt, &display_state.wires, ui.painter());
 
         ui.style_mut().text_styles.insert(
             egui::TextStyle::Body,
@@ -163,12 +173,27 @@ impl SimulatorUI {
             *sync = SyncState::Synced;
         }
     }
-    fn draw_connections(&self, wires: &HashMap<(ID, (ID, PIN)), Wire>, pt: &Painter) {
+    fn draw_connections(
+        &self,
+        ckt: &BCircuit,
+        wires: &HashMap<(ID, (ID, PIN)), Wire>,
+        pt: &Painter,
+    ) {
         for wire in wires.values() {
-            // cloning might be bad!
+            let col = if ckt
+                .components()
+                .get(&wire.emitter_id)
+                .unwrap()
+                .borrow()
+                .state
+            {
+                egui::Color32::from_rgb(144, 238, 144)
+            } else {
+                egui::Color32::from_rgb(255, 102, 102)
+            };
             pt.line(
                 wire.pts.iter().map(|k| *k * GRID_UNIT_SIZE).collect(),
-                Stroke::new(wire.width, wire.col),
+                Stroke::new(wire.width, col),
             );
         }
     }

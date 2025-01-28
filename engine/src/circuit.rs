@@ -52,8 +52,19 @@ impl BCircuit {
         self.exec_queue.clear();
         self.clk = None;
     }
-    pub fn components(&self) -> Values<'_, i32, RefCell<Gate>> {
-        return self.components.values().into_iter();
+    pub fn components(&self) -> &HashMap<ID, RefCell<Gate>> {
+        return &self.components;
+    }
+    pub fn set_component_label(&mut self, id: ID, lab: &str) -> Result<(), String> {
+        let c = self.components.get(&id);
+        match c {
+            Some(c) => {
+                c.borrow_mut().label.replace_range(std::ops::RangeFull, lab);
+                self.graph_act(set_expressions, &vec![id]);
+                Ok(())
+            }
+            None => Err(format!("Component with id_{} not found", id)),
+        }
     }
     pub fn clock(&mut self, id: ID) {
         self.clk = Some(id)
@@ -250,8 +261,6 @@ impl BCircuit {
         receiver
             .borrow_mut()
             .set_input_pin_connection(pin, &emitter.borrow())
-            .unwrap();
-        return Ok(());
     }
     pub fn disconnect(&mut self, receiver_id: ID, pin: PIN, emitter_id: ID) -> Result<(), String> {
         let res = self.do_disconnect(receiver_id, pin, emitter_id);
@@ -280,12 +289,7 @@ impl BCircuit {
             return unlink_result;
         }
 
-        receiver
-            .borrow_mut()
-            .clear_input_pin_connection(pin)
-            .unwrap();
-
-        Ok(())
+        receiver.borrow_mut().clear_input_pin_connection(pin)
     }
     pub fn track_output(&mut self, comp_id: ID) -> bool {
         if self.components.get(&comp_id).is_none() {
