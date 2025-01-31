@@ -8,6 +8,8 @@ mod display_elems;
 mod path_find;
 mod state_handler_threads;
 mod update_ops;
+mod logic_units;
+mod utils;
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {

@@ -1,12 +1,11 @@
 use bsim_engine::types::{ID, PIN};
 
-use crate::display_elems::DisplayData;
+use crate::{display_elems::{CompDisplayData}, utils::EmitterReceiverPair};
 
-#[derive(Debug)]
 pub enum CircuitUpdateOps {
     SetState(ID, bool),
-    Connect(ID, (ID, PIN)),
-    Disconnect(ID, (ID, PIN)),
+    Connect(EmitterReceiverPair),
+    Disconnect(EmitterReceiverPair),
     Remove(ID),
     SetComponentLabel(ID, String, String),
 }
@@ -33,11 +32,12 @@ impl SyncState {
     }
 }
 
+
 pub enum UiUpdateOps {
     Dragged,
-    AddComponent(DisplayData),
-    RemoveComponent(ID),
-    Connect(ID, (ID, PIN)),
-    Disconnect(ID, (ID, PIN)),
-    Select(ID),
+    AddComponent(CompDisplayData),
+    RemoveComponent(egui::Id),
+    Connect(EmitterReceiverPair),
+    Disconnect(EmitterReceiverPair),
+    Select(egui::Id),
 }

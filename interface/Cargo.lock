@@ -957,6 +957,7 @@ dependencies = [
  "egui",
  "env_logger",
  "log",
+ "pratt-parser-rs",
  "rand",
  "serde",
  "wasm-bindgen-futures",
@@ -2344,6 +2345,10 @@ checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
  "zerocopy",
 ]
+
+[[package]]
+name = "pratt-parser-rs"
+version = "0.1.0"
 
 [[package]]
 name = "proc-macro-crate"

@@ -53,8 +53,8 @@ pub(crate) fn bootstrap_ckt(c: &mut BCircuit) {
             return v[1] != v[2];
         },
         default_inputs: 2,
-        symbol: "+".into(),
-    });
+        symbol: "*".into(),
+    }); 
 
     c.define_gate(ComponentDefParams {
         name: "NOT".into(),

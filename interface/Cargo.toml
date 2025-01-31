@@ -21,6 +21,7 @@ eframe = { version = "0.30", default-features = false, features = [
 ] }
 log = "0.4"
 bsim_engine = { path = "../engine" }
+pratt-parser-rs = { path = "../../pratt-parser-rs" }
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }

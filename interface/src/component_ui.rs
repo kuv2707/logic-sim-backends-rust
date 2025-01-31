@@ -1,49 +1,71 @@
 use bsim_engine::{
+    circuit::BCircuit,
     components::Gate,
     types::{CompType, ID},
 };
 use egui::{
-    epaint::CubicBezierShape, pos2, vec2, Button, Color32, FontId, Painter, Pos2, Rect, Response,
+    epaint::CubicBezierShape, vec2, Button, Color32, FontId, Painter, Pos2, Rect, Response,
     Rounding, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 
 use crate::{
     consts::{GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
-    display_elems::DisplayData,
+    display_elems::CompDisplayData,
     update_ops::{CircuitUpdateOps, UiUpdateOps},
+    utils::{CompIO, EmitterReceiverPair},
 };
 
 pub const PIN_BTN_SIZE: f32 = 20.0;
 
 pub fn paint_component(
-    disp_params: &mut DisplayData,
+    disp_params: &mut CompDisplayData,
     ui: &mut Ui,
-    gate: &mut Gate,
-    from: &mut Option<ID>,
-) -> (Vec<CircuitUpdateOps>, Vec<UiUpdateOps>) {
-    let mut ckt_evts = Vec::<CircuitUpdateOps>::new();
-    let mut ui_evts = Vec::<UiUpdateOps>::new();
+    ckt: &BCircuit,
+    from: &mut Option<(egui::Id, CompIO)>,
+    ckt_evts: &mut Vec<CircuitUpdateOps>,
+    ui_evts: &mut Vec<UiUpdateOps>,
+) {
     let container = egui::Rect::from_min_size(
         disp_params.logical_loc * GRID_UNIT_SIZE,
         disp_params.size * GRID_UNIT_SIZE,
     );
     let is_clk = disp_params.name == "CLK";
     let al = ui.allocate_rect(container, Sense::click_and_drag());
+
+    // todo: this should only be Some() when the component isn't a module
+    let gate = match ckt.components().get(&disp_params.outputs_rel[0].id) {
+        Some(g) => g,
+        None => return,
+    }.borrow();
+
     if ui.is_rect_visible(container) {
-        draw_component_shape(ui.painter(), disp_params, container, gate.state);
+        draw_component_shape(
+            ui.painter(),
+            disp_params,
+            container,
+            if disp_params.is_module {
+                None
+            } else {
+                Some(gate.state)
+            },
+        );
     }
 
-    for (i, pos) in disp_params.input_locs_rel.iter().enumerate() {
+    for (i, port) in disp_params.inputs_rel.iter().enumerate() {
         if i == 0 && !disp_params.is_clocked {
             continue;
         }
         if add_pin_btn(
             container,
             // doesn't align with wires in AND etc
-            *pos * GRID_UNIT_SIZE,
+            port.loc_rel * GRID_UNIT_SIZE,
             ui,
             false,
-            &gate.input_pin_exprs[i],
+            &ckt.components()
+                .get(&port.id)
+                .unwrap()
+                .borrow()
+                .input_pin_exprs[port.pin],
         )
         .clicked()
         {
@@ -51,9 +73,15 @@ pub fn paint_component(
             match from {
                 Some(id) => {
                     ckt_evts.push(if bks {
-                        CircuitUpdateOps::Disconnect(*id, (disp_params.id, i))
+                        CircuitUpdateOps::Disconnect(EmitterReceiverPair {
+                            emitter: *id,
+                            receiver: (disp_params.id, *port),
+                        })
                     } else {
-                        CircuitUpdateOps::Connect(*id, (disp_params.id, i))
+                        CircuitUpdateOps::Connect(EmitterReceiverPair {
+                            emitter: *id,
+                            receiver: (disp_params.id, *port),
+                        })
                     });
                 }
                 None => {}
@@ -61,28 +89,30 @@ pub fn paint_component(
         }
     }
 
-    if add_pin_btn(
-        container,
-        disp_params.output_loc_rel * GRID_UNIT_SIZE,
-        ui,
-        match from {
-            Some(id) => disp_params.id == *id,
-            None => false,
-        },
-        &gate.state_expr,
-    )
-    .clicked()
-    {
-        *from = match from {
-            Some(id) => {
-                if *id == disp_params.id {
-                    // clicking on the same gate twice deselects it
-                    None
-                } else {
-                    Some(disp_params.id)
+    for port in &disp_params.outputs_rel {
+        if add_pin_btn(
+            container,
+            port.loc_rel * GRID_UNIT_SIZE,
+            ui,
+            match from {
+                Some((_, pininfo)) => port.id == pininfo.id,
+                None => false,
+            },
+            &ckt.components().get(&port.id).unwrap().borrow().state_expr,
+        )
+        .clicked()
+        {
+            *from = match from {
+                Some((id, pininfo)) => {
+                    if port.id == pininfo.id {
+                        // clicking on the same pin btn twice deselects it
+                        None
+                    } else {
+                        Some((disp_params.id, *port))
+                    }
                 }
+                None => Some((disp_params.id, *port)),
             }
-            None => Some(disp_params.id),
         }
     }
 
@@ -95,8 +125,9 @@ pub fn paint_component(
             .lost_focus()
         {
             ckt_evts.push(CircuitUpdateOps::SetComponentLabel(
-                disp_params.id,
-                gate.label.clone(),
+                disp_params.outputs_rel[0].id, //todo: what would it mean for a module
+                // gate.label.clone(),
+                "".into(),
                 disp_params.label.clone(),
             ));
         }
@@ -136,16 +167,18 @@ pub fn paint_component(
 
     if r.clicked() && !is_clk {
         if is_ctrl_pressed(ui) {
-            ckt_evts.push(CircuitUpdateOps::Remove(gate.id));
-            ui_evts.push(UiUpdateOps::RemoveComponent(gate.id));
+            ui_evts.push(UiUpdateOps::RemoveComponent(disp_params.id));
         } else {
             ui_evts.push(UiUpdateOps::Select(disp_params.id));
+
             if gate.comp_type == CompType::Input {
-                ckt_evts.push(CircuitUpdateOps::SetState(disp_params.id, !gate.state));
+                ckt_evts.push(CircuitUpdateOps::SetState(
+                    disp_params.outputs_rel[0].id,
+                    !gate.state,
+                ));
             }
         }
     }
-    return (ckt_evts, ui_evts);
 }
 
 pub fn add_pin_btn(
@@ -179,14 +212,23 @@ fn is_ctrl_pressed(ui: &Ui) -> bool {
 
 fn draw_component_shape(
     painter: &Painter,
-    disp_params: &DisplayData,
+    disp_params: &CompDisplayData,
     container: Rect,
-    state: bool,
+    state: Option<bool>,
 ) {
-    let color = if state {
-        egui::Color32::from_rgb(144, 238, 144)
-    } else {
-        egui::Color32::from_rgb(255, 102, 102)
+    let color = match state {
+        Some(state) => {
+            if state {
+                egui::Color32::from_rgb(144, 238, 144)
+            } else {
+                egui::Color32::from_rgb(255, 102, 102)
+            }
+        }
+        None => egui::Color32::from_rgb(19, 19, 19),
+    };
+    let state = match state {
+        Some(s) => s,
+        None => false, // when drawing a module
     };
     let stroke = Stroke::new(2.0, color);
     let name = disp_params.name.as_str();

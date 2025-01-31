@@ -17,6 +17,7 @@ use crate::{
     display_elems::{DisplayState, Screen, UnitArea, Wire},
     path_find::a_star_get_pts,
     update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
+    utils::EmitterReceiverPair,
 };
 
 pub fn toggle_clock(
@@ -51,21 +52,25 @@ pub fn ckt_communicate(
         let mut ckt = update_am.lock().unwrap();
         let result = match rec {
             CircuitUpdateOps::SetState(id, val) => ckt.set_component_state(id, val),
-            CircuitUpdateOps::Connect(emitter_id, (receiver_id, pin)) => {
-                let res = ckt.connect(receiver_id, pin, emitter_id);
+            CircuitUpdateOps::Connect(er_pair) => {
+                let res = ckt.connect(
+                    er_pair.receiver.1.id,
+                    er_pair.receiver.1.pin,
+                    er_pair.emitter.1.id,
+                );
                 if res.is_ok() {
-                    ui_sender
-                        .send(UiUpdateOps::Connect(emitter_id, (receiver_id, pin)))
-                        .unwrap();
+                    ui_sender.send(UiUpdateOps::Connect(er_pair)).unwrap();
                 }
                 res
             }
-            CircuitUpdateOps::Disconnect(emitter_id, (receiver_id, pin)) => {
-                let res = ckt.disconnect(receiver_id, pin, emitter_id);
+            CircuitUpdateOps::Disconnect(er_pair) => {
+                let res = ckt.disconnect(
+                    er_pair.receiver.1.id,
+                    er_pair.receiver.1.pin,
+                    er_pair.emitter.1.id,
+                );
                 if res.is_ok() {
-                    ui_sender
-                        .send(UiUpdateOps::Disconnect(receiver_id, (emitter_id, pin)))
-                        .unwrap();
+                    ui_sender.send(UiUpdateOps::Disconnect(er_pair)).unwrap();
                 }
                 res
             }
@@ -90,6 +95,7 @@ pub fn ckt_communicate(
 pub fn ui_update(
     receiver: Receiver<UiUpdateOps>,
     display_state: Arc<Mutex<DisplayState>>,
+    ckt_sender: Sender<CircuitUpdateOps>,
 ) -> impl Fn() {
     move || loop {
         let rec = receiver.recv().unwrap();
@@ -111,56 +117,58 @@ pub fn ui_update(
                 // if the user drags, a drag event would be sent, but that would
                 // be sequenced after this code, so there's no chance of a
                 // transient inconsistent state causing the app to crash.
-                ds.display_data.remove(&id);
                 clear_screen(&mut ds.screen);
                 mark_obstacles(ds);
+                let dparams = ds
+                    .display_data
+                    .remove(&id)
+                    .expect("Can't remove it as it is already absent! STALE UI!!");
+
                 let mut remove_list = Vec::new();
-                for wire in ds.wires.keys() {
-                    if wire.0 == id || wire.1 .0 == id {
-                        remove_list.push(*wire);
+                for er_pair in ds.wires.keys() {
+                    if dparams.contents.contains(&er_pair.emitter.1.id)
+                        || dparams.contents.contains(&er_pair.receiver.1.id)
+                    {
+                        remove_list.push(*er_pair);
                     }
                 }
                 for rem_key in remove_list {
                     ds.wires.remove(&rem_key);
                 }
+                for remid in dparams.contents {
+                    ckt_sender.send(CircuitUpdateOps::Remove(remid)).unwrap();
+                }
             }
-            UiUpdateOps::Connect(emitter_id, (rec_id, pin)) => {
-                let pts = find_path(ds, &emitter_id, &rec_id, pin);
+            UiUpdateOps::Connect(er_pair) => {
+                let pts = find_path(ds, &er_pair);
                 ds.wires.insert(
-                    (emitter_id, (rec_id, pin)),
+                    er_pair,
                     Wire {
                         pts,
-                        emitter_id,
+                        emitter: er_pair.emitter,
                         width: 2.0, // todo: make bolder when component is selected
                     },
                 );
             }
-            UiUpdateOps::Disconnect(rec_id, (send_id, pin)) => {
-                ds.wires.remove(&(send_id, (rec_id, pin)));
+            UiUpdateOps::Disconnect(er_pair) => {
+                ds.wires.remove(&er_pair);
             }
             UiUpdateOps::Select(id) => {
                 // todo: select, deselect single or multiple elems.
-                // let keys = ds
-                //     .wires
-                //     .keys()
-                //     .filter(|k| k.0 == id)
-                //     .cloned()
-                //     .collect::<Vec<(ID, (ID, PIN))>>();
-                // for (send_id, (recv_id, pin)) in keys {
-                //     let w = ds.wires.get_mut(&(send_id, (recv_id, pin))).unwrap();
-                //     w.width = 5.0;
-                //     w.col = Color32::YELLOW;
-                // }
             }
         }
     }
 }
 
 fn update_wires(ds: &mut DisplayState) {
-    let keys = ds.wires.keys().cloned().collect::<Vec<(ID, (ID, PIN))>>();
-    for (send_id, (recv_id, pin)) in keys {
-        let newpts = find_path(ds, &send_id, &recv_id, pin);
-        ds.wires.get_mut(&(send_id, (recv_id, pin))).unwrap().pts = newpts;
+    let keys = ds
+        .wires
+        .keys()
+        .cloned()
+        .collect::<Vec<EmitterReceiverPair>>();
+    for er_pair in keys {
+        let newpts = find_path(ds, &er_pair);
+        ds.wires.get_mut(&er_pair).unwrap().pts = newpts;
     }
 }
 
@@ -173,10 +181,12 @@ fn mark_obstacles(ds: &mut DisplayState) {
                 ds.screen[y as usize][x as usize] = UnitArea::Unvisitable;
             }
         }
-        let oloc = dd.logical_loc + dd.output_loc_rel;
-        ds.screen[oloc.y as usize][oloc.x as usize] = UnitArea::VACANT;
-        for iloc in &dd.input_locs_rel {
-            let iloc = dd.logical_loc + *iloc;
+        for oloc in &dd.outputs_rel {
+            let oloc = dd.logical_loc + oloc.loc_rel;
+            ds.screen[oloc.y as usize][oloc.x as usize] = UnitArea::VACANT;
+        }
+        for iloc in &dd.inputs_rel {
+            let iloc = dd.logical_loc + iloc.loc_rel;
             ds.screen[iloc.y as usize][iloc.x as usize - 1] = UnitArea::VACANT;
             ds.screen[iloc.y as usize][iloc.x as usize] = UnitArea::VACANT;
         }
@@ -191,12 +201,12 @@ fn clear_screen(s: &mut Screen) {
     }
 }
 
-fn find_path(ds: &DisplayState, send_id: &ID, recv_id: &ID, pin: PIN) -> Vec<Pos2> {
-    let oploc = ds.display_data.get(send_id).unwrap();
-    let oploc = oploc.logical_loc + oploc.output_loc_rel;
+fn find_path(ds: &DisplayState, er_pair: &EmitterReceiverPair) -> Vec<Pos2> {
+    let oploc = ds.display_data.get(&er_pair.emitter.0).unwrap();
+    let oploc = oploc.logical_loc + er_pair.emitter.1.loc_rel;
 
-    let iploc = ds.display_data.get(recv_id).unwrap();
-    let iploc = iploc.logical_loc + iploc.input_locs_rel[pin];
+    let iploc = ds.display_data.get(&er_pair.receiver.0).unwrap();
+    let iploc = iploc.logical_loc + er_pair.receiver.1.loc_rel;
 
     a_star_get_pts(
         (oploc.x as i32, oploc.y as i32),
