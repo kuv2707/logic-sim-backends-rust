@@ -270,7 +270,7 @@ fn get_disp_data_from_modctx(
             let contents = ctx.contents;
             let size: Vec2 = (8.0, 8.0).into();
 
-            let i_gap = size.y / (ipins.len() + 1) as f32;
+            let i_gap = size.y / (ipins.len()) as f32;
             let o_gap = size.y / (opins.len() + 1) as f32;
 
             let data = CompDisplayData {
@@ -293,7 +293,7 @@ fn get_disp_data_from_modctx(
                     .map(|(i, id)| CompIO {
                         id: *id,
                         pin: 1,
-                        loc_rel: vec2(0.0, i_gap * (i + 1) as f32),
+                        loc_rel: vec2(0.0, i_gap * (i) as f32),
                     })
                     .collect(),
                 is_clocked: false, // todo

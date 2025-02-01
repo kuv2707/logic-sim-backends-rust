@@ -69,7 +69,7 @@ impl DisplayState {
             screen: make_screen(),
             wires: HashMap::new(),
             ctx,
-            clk_t: 5000,
+            clk_t: 1000,
             module_expr_input: String::new(),
         };
         // pre-add clock

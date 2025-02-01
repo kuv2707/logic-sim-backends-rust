@@ -30,9 +30,12 @@ pub struct Gate {
     #[deprecated(note = "Compute from vector sizes of `self.input_pin_values`")]
     n_inp: usize,
     pub symbol: String,
+
+    // todo: combine these three into one
     input_pin_values: Vec<bool>,
     pub input_pin_sources: Vec<ID>,
     pub input_pin_exprs: Vec<String>,
+
     pub state_expr: String,
     pub clock_manager: Option<ClockManager>,
 }
@@ -46,7 +49,7 @@ impl Gate {
             comp_type: p.comp_type,
             label: p.label.to_owned(),
             eval: p.eval,
-            state: false,
+            state: false, // initial state always remains false as component is not fully connected
             output_recvlist: HashSet::new(),
             n_inp,
             symbol: p.symbol.clone(),
@@ -59,10 +62,6 @@ impl Gate {
 
             clock_manager: None,
         };
-        if n_inp > 0 {
-            // not doing for inputs etc
-            c.state = (c.eval)(&c.input_pin_values, false); // sound initial assumption
-        }
         if c.comp_type == CompType::Sequential {
             c.clock_manager = Some(ClockManager::new());
             c.state_expr = p.label + "(t)"
@@ -93,6 +92,15 @@ impl Gate {
         // input and clocked components have independent state
         self.comp_type == CompType::Input || self.comp_type == CompType::Sequential
     }
+    fn are_inputs_completely_connected(&self) -> bool {
+        (match self.clock_manager {
+            Some(_) => &self.input_pin_sources[..],
+            None => &self.input_pin_sources[1..],
+        })
+        .iter()
+        .find(|a| **a == NULL)
+        .is_none()
+    }
     pub fn link_output_receiver(&mut self, receiver_id: ID, pin: PIN) {
         self.output_recvlist.insert((receiver_id, pin));
     }
@@ -122,9 +130,8 @@ impl Gate {
         if self.input_pin_sources[pin] != NULL {
             return Err(format!("Please disconnect it first!"));
         }
-        // we do allow setting CLOCK_PIN`th index for non clocked compos
-        // they are simply never used
-        self.input_pin_values[pin as usize] = emitter.state;
+        
+        self.set_pin_val(pin, emitter.state);
         self.input_pin_sources[pin as usize] = emitter.id;
         self.input_pin_exprs[pin as usize].push_str(&emitter.state_expr);
 
@@ -198,7 +205,14 @@ fn state_update(
                 c.state
             }
         }
-        None => (c.eval)(&c.input_pin_values, c.state),
+        None => {
+            if !c.are_inputs_completely_connected() {
+                // a component is off until it is completely connected
+                false
+            } else {
+                (c.eval)(&c.input_pin_values, c.state)
+            }
+        }
     };
 
     if optimize && new_state == c.state {
@@ -224,7 +238,11 @@ fn state_update(
     }
 }
 
-pub(crate) fn set_expressions(c: &mut Gate, mp: &HashMap<i32, RefCell<Gate>>, exec_q: &mut VecDeque<ID>) {
+pub(crate) fn set_expressions(
+    c: &mut Gate,
+    mp: &HashMap<i32, RefCell<Gate>>,
+    exec_q: &mut VecDeque<ID>,
+) {
     match c.comp_type {
         CompType::Combinational => c.state_expr = form_expr(&c.input_pin_exprs, &c.symbol),
         _ => {

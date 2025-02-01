@@ -471,7 +471,7 @@ mod tests {
 
         // connecting to self
         let q2 = c.add_component("JK", "Q2").unwrap();
-        c.connect(q2, 1, q2).unwrap();
+        assert!(c.connect(q2, 1, q2).is_err());
     }
 
     #[test]
@@ -498,18 +498,18 @@ mod tests {
         assert_eq!(c.state(n1).unwrap(), false);
         assert_eq!(c.state(n2).unwrap(), true);
 
+        // if an and gate has its input disconnected, it turns off (not ON)
         c.remove_component(i).unwrap();
-        assert_eq!(c.state(n1).unwrap(), true);
-        assert_eq!(c.state(n2).unwrap(), false);
+        assert_eq!(c.state(n1).unwrap(), false);
+        assert_eq!(c.state(n2).unwrap(), true);
 
         c.disconnect(n2, 1, n1).unwrap();
-        assert_eq!(c.state(n2).unwrap(), true);
+        assert_eq!(c.state(n2).unwrap(), false);
     }
 
     #[test]
     fn clock_change_ripple() {
         let mut c = BCircuit::new();
-        c.power_on();
 
         // 2 bit async up counter
         let one = c.add_input("1", true);
@@ -529,6 +529,9 @@ mod tests {
         c.connect(n, 1, q).unwrap();
 
         c.clock(clk);
+        // if circuit is assembled after powering on, the due to 
+        // THIS TEST IS NONDETERMINISTIC!??
+        c.power_on();
 
         assert_eq!((c.state(q).unwrap(), c.state(qq).unwrap()), (false, false));
         c.pulse_clock();
