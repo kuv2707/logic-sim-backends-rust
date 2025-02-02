@@ -3,11 +3,12 @@ use std::hash::Hash;
 use bsim_engine::types::{ID, PIN};
 use egui::Vec2;
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CompIO {
     pub id: ID,
     pub pin: PIN,
     pub loc_rel: Vec2,
+    pub label: String,
 }
 
 impl Hash for CompIO {
@@ -18,7 +19,7 @@ impl Hash for CompIO {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Clone, Copy)]
+#[derive(Eq, Hash, PartialEq, Clone)]
 pub struct EmitterReceiverPair {
     pub emitter: (egui::Id, CompIO),
     pub receiver: (egui::Id, CompIO),

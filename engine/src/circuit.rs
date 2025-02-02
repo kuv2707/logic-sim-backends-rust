@@ -94,10 +94,15 @@ impl BCircuit {
             self.exec_queue.push_back(*k);
         }
 
-        while !self.exec_queue.is_empty() {
+        let mut iters = 0;
+        // todo: puede ser mejor que esto.
+        let max_iters = 5000;
+
+        while !self.exec_queue.is_empty() && iters < max_iters {
             let id = self.exec_queue.pop_front().unwrap();
             let mut k = self.components.get(&id).unwrap().borrow_mut();
             runnable(&mut k, &self.components, &mut self.exec_queue);
+            iters += 1;
         }
     }
     pub fn define_gate(&mut self, p: ComponentDefParams) {
@@ -529,7 +534,7 @@ mod tests {
         c.connect(n, 1, q).unwrap();
 
         c.clock(clk);
-        // if circuit is assembled after powering on, the due to 
+
         // THIS TEST IS NONDETERMINISTIC!??
         c.power_on();
 
@@ -592,5 +597,21 @@ mod tests {
         c.compile();
         c.power_on();
         println!("{}", c.components.get(&or).unwrap().borrow().state_expr);
+    }
+    #[test]
+    fn latch() {
+        let mut c = BCircuit::new();
+        c.power_on();
+
+        let q = c.add_component("NAND", "q").unwrap();
+        let nq = c.add_component("NAND", "nq").unwrap();
+        let is = c.add_input("S", true);
+        let ir = c.add_input("R", false);
+
+        c.connect(q, 1, is).unwrap();
+        c.connect(nq, 2, ir).unwrap();
+
+        c.connect(q, 2, nq).unwrap();
+        c.connect(nq, 1, q).unwrap();
     }
 }

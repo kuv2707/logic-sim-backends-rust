@@ -20,15 +20,15 @@ fn main() -> eframe::Result {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_max_inner_size((
-                GRID_UNIT_SIZE * WINDOW_WIDTH,
-                GRID_UNIT_SIZE * WINDOW_HEIGHT,
-            ))
-            .with_min_inner_size((
-                GRID_UNIT_SIZE * WINDOW_WIDTH,
-                GRID_UNIT_SIZE * WINDOW_HEIGHT,
-            ))
-            .with_resizable(false),
+            // .with_max_inner_size((
+            //     GRID_UNIT_SIZE * WINDOW_WIDTH,
+            //     GRID_UNIT_SIZE * WINDOW_HEIGHT,
+            // ))
+            // .with_min_inner_size((
+            //     GRID_UNIT_SIZE * WINDOW_WIDTH,
+            //     GRID_UNIT_SIZE * WINDOW_HEIGHT,
+            // ))
+            .with_resizable(true),
         ..Default::default()
     };
     eframe::run_native(

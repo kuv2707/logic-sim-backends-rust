@@ -130,7 +130,7 @@ impl Gate {
         if self.input_pin_sources[pin] != NULL {
             return Err(format!("Please disconnect it first!"));
         }
-        
+
         self.set_pin_val(pin, emitter.state);
         self.input_pin_sources[pin as usize] = emitter.id;
         self.input_pin_exprs[pin as usize].push_str(&emitter.state_expr);
@@ -214,12 +214,12 @@ fn state_update(
             }
         }
     };
+    // println!("{} {} : {}", c.name, c.label, c.state);
 
-    if optimize && new_state == c.state {
+    if optimize && (new_state == c.state) {
         return;
     }
     c.state = new_state;
-    // println!("{} {} : {}", c.name, c.label, c.state);
     for (id, pin) in &c.output_recvlist {
         let mut ele = mp
             .get(id)
@@ -243,12 +243,23 @@ pub(crate) fn set_expressions(
     mp: &HashMap<i32, RefCell<Gate>>,
     exec_q: &mut VecDeque<ID>,
 ) {
-    match c.comp_type {
-        CompType::Combinational => c.state_expr = form_expr(&c.input_pin_exprs, &c.symbol),
-        _ => {
-            c.state_expr = c.label.clone();
-        }
+    if !c.are_inputs_completely_connected() {
+        return;
     }
+    let new_expr = match c.comp_type {
+        CompType::Combinational => {
+            if c.label.len() > 0 {
+                c.label.clone()
+            } else {
+                form_expr(&c.input_pin_exprs, &c.symbol)
+            }
+        }
+        _ => c.label.clone(),
+    };
+    if new_expr == c.state_expr {
+        return;
+    }
+    c.state_expr = new_expr;
     for (id, pin) in &c.output_recvlist {
         let mut ele = mp
             .get(id)
@@ -259,6 +270,7 @@ pub(crate) fn set_expressions(
         ele.set_pin_expr(*pin, c.state_expr.as_str());
 
         if exec_q.is_empty() || *exec_q.back().unwrap() != *id {
+            // println!("{}", id);
             exec_q.push_back(*id);
         }
     }

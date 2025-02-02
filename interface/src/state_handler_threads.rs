@@ -129,7 +129,7 @@ pub fn ui_update(
                     if dparams.contents.contains(&er_pair.emitter.1.id)
                         || dparams.contents.contains(&er_pair.receiver.1.id)
                     {
-                        remove_list.push(*er_pair);
+                        remove_list.push(er_pair.clone());
                     }
                 }
                 for rem_key in remove_list {
@@ -142,7 +142,7 @@ pub fn ui_update(
             UiUpdateOps::Connect(er_pair) => {
                 let pts = find_path(ds, &er_pair);
                 ds.wires.insert(
-                    er_pair,
+                    er_pair.clone(),
                     Wire {
                         pts,
                         emitter: er_pair.emitter,

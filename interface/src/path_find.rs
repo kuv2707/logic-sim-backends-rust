@@ -75,6 +75,9 @@ impl PartialEq for OrdPt {
 }
 
 pub fn a_star_get_pts(from: Point, to: Point, scr: &Screen) -> Vec<Point> {
+    if scr[to.1 as usize][to.0 as usize] == UnitArea::Unvisitable {
+        return vec![];
+    }
     let mut open: BinaryHeap<OrdPt> = BinaryHeap::new();
     let mut closed: HashSet<Point> = HashSet::new();
 
@@ -135,7 +138,8 @@ fn heuristic_cost(from: Point, to: Point) -> Cost {
     // we penalize diagonal movement by making its cost
     // 3x that of rectangular movement, to obtain a mostly
     // rectangular path. (c'est beau!)
-    (x_diff * 21 + (y_diff - x_diff) * 10) as usize
+    (((x_diff.pow(2) + y_diff.pow(2)) as f64).sqrt()*10000.0) as usize
+    // (x_diff * 21 + (y_diff - x_diff) * 10) as usize
 }
 
 #[cfg(test)]

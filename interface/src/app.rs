@@ -18,7 +18,7 @@ use egui::{
 
 use crate::{
     component_ui::{add_pin_btn, paint_component, PIN_BTN_SIZE},
-    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE},
+    consts::{DEFAULT_SCALE, GREEN_COL, GRID_UNIT_SIZE, RED_COL},
     display_elems::{CompDisplayData, DisplayState, Screen, UnitArea, Wire},
     logic_units::{get_logic_unit, ModuleCreationData},
     state_handler_threads::{ckt_communicate, toggle_clock, ui_update},
@@ -30,8 +30,7 @@ pub struct SimulatorUI {
     ckt: Arc<Mutex<BCircuit>>,
     pub display_state: Arc<Mutex<DisplayState>>,
     pub ckt_sender: Sender<CircuitUpdateOps>,
-    pub ui_sender: Sender<UiUpdateOps>,
-    sync: Arc<Mutex<SyncState>>,          // todo: shift to display_state
+    pub ui_sender: Sender<UiUpdateOps>, // todo: shift to display_state
     pub from: Option<(egui::Id, CompIO)>, //todo: shift to display_state
     pub available_comp_defns: Vec<(String, usize)>,
 }
@@ -87,7 +86,6 @@ impl SimulatorUI {
             display_state,
             ckt_sender,
             ui_sender,
-            sync,
             from: None,
             available_comp_defns,
         };
@@ -95,13 +93,9 @@ impl SimulatorUI {
     }
     fn ui(&mut self, ui: &mut Ui) {
         let mut ckt = self.ckt.lock().unwrap();
-        let mut sync = self.sync.lock().unwrap();
-
-        ui.painter()
-            .rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(80, 60, 60));
-
         let display_state = &mut self.display_state.lock().unwrap();
 
+        draw_bg(ui, &display_state.screen);
         let display_data = &display_state.display_data;
         let ui_sender = &mut self.ui_sender;
         ui.horizontal(|ui| {
@@ -128,6 +122,7 @@ impl SimulatorUI {
                                 } else {
                                     vec2(0.0, spc * i as f32)
                                 },
+                                label: String::new(),
                             }
                         })
                         .collect();
@@ -142,6 +137,7 @@ impl SimulatorUI {
                             id,
                             pin: 1,
                             loc_rel: vec2(size.x, size.y / 2.0),
+                            label: String::new(),
                         }],
                         inputs_rel,
                         is_clocked: gate.clock_manager.is_some(),
@@ -200,15 +196,15 @@ impl SimulatorUI {
         }
 
         ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
-            let btn = Button::new(if sync.is_synced() {
+            let btn = Button::new(if display_state.sync.is_synced() {
                 "Synced"
             } else {
-                sync.error_msg()
+                display_state.sync.error_msg()
             })
-            .fill(if sync.is_synced() {
-                egui::Color32::from_rgb(34, 139, 34) // Darker green
+            .fill(if display_state.sync.is_synced() {
+                GREEN_COL
             } else {
-                egui::Color32::from_rgb(139, 0, 0) // Darker red
+                RED_COL
             });
             ui.add(btn);
             ui.add(Label::new(&format!(
@@ -216,8 +212,8 @@ impl SimulatorUI {
                 ckt.components().len()
             )))
         });
-        if !sync.is_error() {
-            *sync = SyncState::Synced;
+        if !display_state.sync.is_error() {
+            display_state.sync = SyncState::Synced;
         }
     }
     fn draw_connections(
@@ -234,9 +230,9 @@ impl SimulatorUI {
                 .borrow()
                 .state
             {
-                egui::Color32::from_rgb(144, 238, 144)
+                GREEN_COL
             } else {
-                egui::Color32::from_rgb(255, 102, 102)
+                RED_COL
             };
             pt.line(
                 wire.pts.iter().map(|k| *k * GRID_UNIT_SIZE).collect(),
@@ -268,13 +264,12 @@ fn get_disp_data_from_modctx(
             let ipins = ctx.inputs;
             let opins = ctx.outputs;
             let contents = ctx.contents;
-            let size: Vec2 = (8.0, 8.0).into();
+            let size: Vec2 = (8.0, 2.0 * (max(ipins.len(), opins.len())) as f32).into();
 
-            let i_gap = size.y / (ipins.len()) as f32;
+            let i_gap = size.y / (ipins.len() + 1) as f32;
             let o_gap = size.y / (opins.len() + 1) as f32;
-
             let data = CompDisplayData {
-                id: egui::Id::new(ipins[0]),
+                id: egui::Id::new(contents.iter().next().unwrap()),
                 logical_loc: (7.0, 7.0).into(),
                 name: "module".into(),
                 label: "".into(),
@@ -282,30 +277,56 @@ fn get_disp_data_from_modctx(
                     .iter()
                     .enumerate()
                     .map(|(i, id)| CompIO {
-                        id: *id,
+                        id: *id.1,
                         pin: 1,
                         loc_rel: vec2(size.x, o_gap * (i + 1) as f32),
+                        label: id.0.to_string(),
                     })
                     .collect(),
                 inputs_rel: ipins
                     .iter()
                     .enumerate()
                     .map(|(i, id)| CompIO {
-                        id: *id,
+                        id: *id.1,
                         pin: 1,
-                        loc_rel: vec2(0.0, i_gap * (i) as f32),
+                        loc_rel: vec2(0.0, i_gap * (i + 1) as f32),
+                        label: id.0.to_string(),
                     })
                     .collect(),
-                is_clocked: false, // todo
+                is_clocked: true, // todo
                 is_module: true,
                 scale: DEFAULT_SCALE,
                 size,
-                state_indicator_ref: Some(opins[0]),
+                state_indicator_ref: None,
                 contents,
             };
             Ok(data)
         }
         Err(e) => Err(e),
+    }
+}
+
+fn draw_bg(ui: &mut Ui, s: &Screen) {
+    let p = ui.painter();
+    p.rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(34, 37, 42));
+    let stroke = Stroke::new(1.0, Color32::from_rgb(52, 56, 65));
+    for y in 0..s.len() {
+        p.line(
+            vec![(0, y), (s[0].len(), y)]
+                .iter()
+                .map(|v| pos2(v.0 as f32, v.1 as f32) * GRID_UNIT_SIZE)
+                .collect(),
+            stroke,
+        );
+    }
+    for x in 0..s[0].len() {
+        p.line(
+            vec![(x, 0), (x, s.len())]
+                .iter()
+                .map(|v| pos2(v.0 as f32, v.1 as f32) * GRID_UNIT_SIZE)
+                .collect(),
+            stroke,
+        );
     }
 }
 

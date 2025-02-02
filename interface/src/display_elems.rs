@@ -4,8 +4,7 @@ use bsim_engine::types::{ID, PIN};
 use egui::{Color32, Context, Id, Pos2, Vec2};
 
 use crate::{
-    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
-    utils::{CompIO, EmitterReceiverPair},
+    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH}, update_ops::SyncState, utils::{CompIO, EmitterReceiverPair}
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -56,6 +55,7 @@ pub struct DisplayState {
     pub ctx: Context,
     pub clk_t: u64,
     pub module_expr_input: String,
+    pub sync: SyncState,
 }
 
 fn make_screen() -> Screen {
@@ -71,6 +71,7 @@ impl DisplayState {
             ctx,
             clk_t: 1000,
             module_expr_input: String::new(),
+            sync: SyncState::Synced,
         };
         // pre-add clock
         let size: Vec2 = (8.0, 4.0).into();
@@ -86,6 +87,7 @@ impl DisplayState {
                     id: clk_id,
                     pin: 1,
                     loc_rel: (size.x, size.y / 2.0).into(),
+                    label: String::new()
                 }],
                 inputs_rel: vec![],
                 is_clocked: false,

@@ -7,8 +7,8 @@ use bsim_engine::{
 use pratt_parser::{lexer::Lexer, nodes::NodeType, pratt::Parser};
 
 pub struct ModuleCreationData {
-    pub inputs: Vec<ID>,
-    pub outputs: Vec<ID>,
+    pub inputs: HashMap<String, ID>,
+    pub outputs: HashMap<String, ID>,
     pub contents: HashSet<ID>,
 }
 
@@ -18,15 +18,14 @@ pub fn get_logic_unit(ckt: &mut BCircuit, s: &str) -> Result<ModuleCreationData,
     let mut p = Parser::new(toks);
     let nodes = p.parse();
 
-    let mut inps: HashMap<String, ID> = HashMap::new();
-    let mut out_ids: Vec<ID> = Vec::new();
+    let mut inp_ids: HashMap<String, ID> = HashMap::new();
+    let mut out_ids: HashMap<String, ID> = HashMap::new();
     let mut all_ids = HashSet::new();
     for node in nodes {
-        let output = traverse_add(&node, ckt, &mut inps, &mut all_ids);
+        node.traverse(0);
+        let output = traverse_add(&node, ckt, &mut inp_ids, &mut out_ids, &mut all_ids);
         match output {
-            Ok(oid) => {
-                out_ids.push(oid);
-            }
+            Ok(oid) => {}
             Err(e) => return Err(e),
         }
     }
@@ -35,9 +34,8 @@ pub fn get_logic_unit(ckt: &mut BCircuit, s: &str) -> Result<ModuleCreationData,
         return Err("No outputs created!".into());
     }
 
-    let mut inp_ids: Vec<i32> = inps.values().map(|e| *e).collect();
     // todo: replace with clock receiver
-    inp_ids.insert(0, NULL);
+    // inp_ids.insert("CLK".into(), NULL);
     Ok(ModuleCreationData {
         inputs: inp_ids,
         outputs: out_ids,
@@ -48,7 +46,8 @@ pub fn get_logic_unit(ckt: &mut BCircuit, s: &str) -> Result<ModuleCreationData,
 fn traverse_add(
     root: &NodeType,
     ckt: &mut BCircuit,
-    inps: &mut HashMap<String, ID>,
+    inp_ids: &mut HashMap<String, ID>,
+    out_ids: &mut HashMap<String, ID>,
     all_ids: &mut HashSet<ID>,
 ) -> Result<ID, String> {
     match root {
@@ -61,11 +60,11 @@ fn traverse_add(
                     };
                     let bfr = ckt.add_component("BFR", name).unwrap();
                     all_ids.insert(bfr);
-                    let parent = match traverse_add(&childs[1], ckt, inps, all_ids) {
+                    let parent = match traverse_add(&childs[1], ckt, inp_ids, out_ids, all_ids) {
                         Err(e) => return Err(e),
                         Ok(k) => k,
                     };
-
+                    out_ids.insert(name.to_string(), bfr);
                     ckt.connect(bfr, 1, parent).unwrap();
                     Ok(bfr)
                 }
@@ -73,7 +72,7 @@ fn traverse_add(
                     // not
                     let n = ckt.add_component("NOT", "").unwrap();
                     all_ids.insert(n);
-                    let parent = match traverse_add(&childs[0], ckt, inps, all_ids) {
+                    let parent = match traverse_add(&childs[0], ckt, inp_ids, out_ids, all_ids) {
                         Err(e) => return Err(e),
                         Ok(k) => k,
                     };
@@ -95,11 +94,11 @@ fn traverse_add(
                         )
                         .unwrap();
                     all_ids.insert(comp);
-                    let left = match traverse_add(&childs[0], ckt, inps, all_ids) {
+                    let left = match traverse_add(&childs[0], ckt, inp_ids, out_ids, all_ids) {
                         Err(e) => return Err(e),
                         Ok(k) => k,
                     };
-                    let right = match traverse_add(&childs[1], ckt, inps, all_ids) {
+                    let right = match traverse_add(&childs[1], ckt, inp_ids, out_ids, all_ids) {
                         Err(e) => return Err(e),
                         Ok(k) => k,
                     };
@@ -111,13 +110,13 @@ fn traverse_add(
             }
         }
         NodeType::Literal(sym, _) => {
-            match inps.get(sym) {
+            match inp_ids.get(sym) {
                 Some(id) => Ok(*id),
                 None => {
                     // add a buffer with this label
                     let bfr = ckt.add_component("BFR", sym).unwrap();
                     all_ids.insert(bfr);
-                    inps.insert(sym.to_string(), bfr);
+                    inp_ids.insert(sym.to_string(), bfr);
                     Ok(bfr)
                 }
             }

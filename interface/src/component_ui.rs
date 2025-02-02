@@ -4,18 +4,18 @@ use bsim_engine::{
     types::{CompType, ID},
 };
 use egui::{
-    epaint::CubicBezierShape, vec2, Button, Color32, FontId, Painter, Pos2, Rect, Response,
+    epaint::CubicBezierShape, vec2, Button, Color32, FontId, Label, Painter, Pos2, Rect, Response,
     Rounding, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 
 use crate::{
-    consts::{GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
+    consts::{GREEN_COL, GRID_UNIT_SIZE, RED_COL, WINDOW_HEIGHT, WINDOW_WIDTH},
     display_elems::CompDisplayData,
     update_ops::{CircuitUpdateOps, UiUpdateOps},
     utils::{CompIO, EmitterReceiverPair},
 };
 
-pub const PIN_BTN_SIZE: f32 = 20.0;
+pub const PIN_BTN_SIZE: f32 = 10.0;
 
 pub fn paint_component(
     disp_params: &mut CompDisplayData,
@@ -36,7 +36,8 @@ pub fn paint_component(
     let gate = match ckt.components().get(&disp_params.outputs_rel[0].id) {
         Some(g) => g,
         None => return,
-    }.borrow();
+    }
+    .borrow();
 
     if ui.is_rect_visible(container) {
         draw_component_shape(
@@ -58,7 +59,7 @@ pub fn paint_component(
         if add_pin_btn(
             container,
             // doesn't align with wires in AND etc
-            port.loc_rel * GRID_UNIT_SIZE,
+            port,
             ui,
             false,
             &ckt.components()
@@ -74,13 +75,13 @@ pub fn paint_component(
                 Some(id) => {
                     ckt_evts.push(if bks {
                         CircuitUpdateOps::Disconnect(EmitterReceiverPair {
-                            emitter: *id,
-                            receiver: (disp_params.id, *port),
+                            emitter: id.clone(),
+                            receiver: (disp_params.id, port.clone()),
                         })
                     } else {
                         CircuitUpdateOps::Connect(EmitterReceiverPair {
-                            emitter: *id,
-                            receiver: (disp_params.id, *port),
+                            emitter: id.clone(),
+                            receiver: (disp_params.id, port.clone()),
                         })
                     });
                 }
@@ -92,7 +93,7 @@ pub fn paint_component(
     for port in &disp_params.outputs_rel {
         if add_pin_btn(
             container,
-            port.loc_rel * GRID_UNIT_SIZE,
+            port,
             ui,
             match from {
                 Some((_, pininfo)) => port.id == pininfo.id,
@@ -108,10 +109,10 @@ pub fn paint_component(
                         // clicking on the same pin btn twice deselects it
                         None
                     } else {
-                        Some((disp_params.id, *port))
+                        Some((disp_params.id, port.clone()))
                     }
                 }
-                None => Some((disp_params.id, *port)),
+                None => Some((disp_params.id, port.clone())),
             }
         }
     }
@@ -183,12 +184,15 @@ pub fn paint_component(
 
 pub fn add_pin_btn(
     container: Rect,
-    pos: Vec2,
+    pin: &CompIO,
     ui: &mut Ui,
     selected: bool,
     input_expr: &str,
 ) -> Response {
-    let brect = Rect::from_center_size(container.min + pos, vec2(PIN_BTN_SIZE, PIN_BTN_SIZE));
+    let brect = Rect::from_center_size(
+        container.min + pin.loc_rel * GRID_UNIT_SIZE,
+        vec2(PIN_BTN_SIZE, PIN_BTN_SIZE),
+    );
     ui.painter().rect_filled(
         brect,
         Rounding::same(12.0),
@@ -197,6 +201,10 @@ pub fn add_pin_btn(
         } else {
             Color32::GRAY
         },
+    );
+    ui.put(
+        Rect::from_min_size(brect.min + vec2(PIN_BTN_SIZE, 0.), vec2(10.0, 10.0)),
+        Label::new(&pin.label),
     );
     let mut al = ui.allocate_rect(brect, Sense::click_and_drag());
     if input_expr.len() > 0 {
@@ -219,9 +227,9 @@ fn draw_component_shape(
     let color = match state {
         Some(state) => {
             if state {
-                egui::Color32::from_rgb(144, 238, 144)
+                GREEN_COL
             } else {
-                egui::Color32::from_rgb(255, 102, 102)
+                RED_COL
             }
         }
         None => egui::Color32::from_rgb(19, 19, 19),
@@ -237,6 +245,8 @@ fn draw_component_shape(
             let mut pts: Vec<Pos2> = vec![
                 (0., 2.0).into(),
                 (5.0, 2.0).into(),
+                (7., 4.0).into(),
+                (8., 4.0).into(),
                 (7., 4.0).into(),
                 (5., 6.0).into(),
                 (0., 6.0).into(),
@@ -295,15 +305,7 @@ fn draw_component_shape(
             }
         }
         _ => {
-            painter.rect_filled(
-                container,
-                8.0,
-                if state {
-                    egui::Color32::from_rgb(144, 238, 144)
-                } else {
-                    egui::Color32::from_rgb(255, 102, 102)
-                },
-            );
+            painter.rect_filled(container, 8.0, if state { GREEN_COL } else { RED_COL });
         }
     };
     // painter.rect_stroke(container, 8.0, Stroke::new(2.0, Color32::BLACK));
