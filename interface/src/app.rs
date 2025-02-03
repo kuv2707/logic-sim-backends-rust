@@ -1,6 +1,6 @@
 use std::{
     cmp::{max, min},
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     f32,
     sync::{Arc, Mutex},
     thread,
@@ -10,7 +10,6 @@ use bsim_engine::{
     circuit::BCircuit,
     types::{CLOCK_PIN, ID, PIN},
 };
-use crossbeam::channel::{self, Sender};
 use egui::{
     pos2, vec2, Align, Button, Color32, Context, FontId, Label, Layout, Painter, Pos2, Rect,
     Stroke, TextEdit, Ui, Vec2, Widget,
@@ -21,16 +20,16 @@ use crate::{
     consts::{DEFAULT_SCALE, GREEN_COL, GRID_UNIT_SIZE, RED_COL},
     display_elems::{CompDisplayData, DisplayState, Screen, UnitArea, Wire},
     logic_units::{get_logic_unit, ModuleCreationData},
-    state_handler_threads::{ckt_communicate, toggle_clock, ui_update},
+    state_handlers::{ckt_communicate, toggle_clock, ui_update},
     update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
     utils::{CompIO, EmitterReceiverPair},
 };
 
 pub struct SimulatorUI {
-    ckt: Arc<Mutex<BCircuit>>,
-    pub display_state: Arc<Mutex<DisplayState>>,
-    pub ckt_sender: Sender<CircuitUpdateOps>,
-    pub ui_sender: Sender<UiUpdateOps>, // todo: shift to display_state
+    ckt: BCircuit,
+    pub display_state: DisplayState,
+    pub ckt_evts: VecDeque<CircuitUpdateOps>,
+    pub ui_evts: VecDeque<UiUpdateOps>, // todo: shift to display_state
     pub from: Option<(egui::Id, CompIO)>, //todo: shift to display_state
     pub available_comp_defns: Vec<(String, usize)>,
 }
@@ -50,64 +49,35 @@ impl SimulatorUI {
             .collect();
         available_comp_defns.sort();
 
-        let (ckt_sender, ckt_receiver) = channel::unbounded();
-        let ckt = Arc::new(Mutex::new(ckt));
-
         let sync_state = SyncState::Synced;
-        let sync = Arc::new(Mutex::new(sync_state));
 
-        let (ui_sender, ui_receiver) = channel::unbounded();
-        let display_state = Arc::new(Mutex::new(DisplayState::init_display_state(clk_id, ctx)));
+        let display_state = DisplayState::init_display_state(clk_id, ctx);
 
-        thread::Builder::new()
-            .name("ckt-module-communicate".into())
-            .spawn(ckt_communicate(
-                ckt_receiver,
-                ckt.clone(),
-                sync.clone(),
-                ui_sender.clone(),
-            ))
-            .expect("Failed to spawn thread");
-        thread::Builder::new()
-            .name("ui-update".into())
-            .spawn(ui_update(
-                ui_receiver,
-                display_state.clone(),
-                ckt_sender.clone(),
-            ))
-            .expect("Failed to spawn thread");
-        thread::Builder::new()
-            .name("ckt-clock-toggle".into())
-            .spawn(toggle_clock(ckt.clone(), display_state.clone(), clk_id))
-            .expect("Failed to spawn thread");
 
         let sim = Self {
             ckt,
             display_state,
-            ckt_sender,
-            ui_sender,
+            ckt_evts: VecDeque::new(),
+            ui_evts: VecDeque::new(),
             from: None,
             available_comp_defns,
         };
         sim
     }
     fn ui(&mut self, ui: &mut Ui) {
-        let mut ckt = self.ckt.lock().unwrap();
-        let display_state = &mut self.display_state.lock().unwrap();
-
-        draw_bg(ui, &display_state.screen);
-        let display_data = &display_state.display_data;
-        let ui_sender = &mut self.ui_sender;
+        draw_bg(ui, &self.display_state.screen);
+        let display_data = &self.display_state.display_data;
+        let ui_sender = &mut self.ui_evts;
         ui.horizontal(|ui| {
             for (i, (name, n_inp)) in self.available_comp_defns.iter().enumerate() {
                 let button = egui::Button::new(name).min_size(Vec2::new(80.0, 40.0));
                 let response = button.ui(ui);
                 if response.clicked() {
                     let id = match name.as_str() {
-                        "Input" => ckt.add_input("", false),
-                        _ => ckt.add_component(name, "").unwrap(),
+                        "Input" => self.ckt.add_input("", false),
+                        _ => self.ckt.add_component(name, "").unwrap(),
                     };
-                    let gate = ckt.get_component(&id).unwrap().borrow();
+                    let gate = self.ckt.get_component(&id).unwrap().borrow();
                     let loc = egui::pos2(40.0 + 80.0 * i as f32, 100.0) / GRID_UNIT_SIZE;
                     let size: Vec2 = (8.0, 8.0).into();
                     let spc = size.y / (n_inp + 1) as f32;
@@ -152,11 +122,11 @@ impl SimulatorUI {
                 }
             }
 
-            let response = ui.text_edit_singleline(&mut display_state.module_expr_input);
+            let response = ui.text_edit_singleline(&mut self.display_state.module_expr_input);
             if response.lost_focus() {
                 match get_disp_data_from_modctx(get_logic_unit(
-                    &mut ckt,
-                    &display_state.module_expr_input,
+                    &mut self.ckt,
+                    &self.display_state.module_expr_input,
                 )) {
                     Ok(data) => {
                         send_event(ui_sender, UiUpdateOps::AddComponent(data));
@@ -165,11 +135,11 @@ impl SimulatorUI {
                         // todo: show msg that expr was bad
                     }
                 }
-                display_state.module_expr_input.clear();
+                self.display_state.module_expr_input.clear();
             }
         });
         // print_screen(&display_state.screen);
-        self.draw_connections(&ckt, &display_state.wires, ui.painter());
+        self.draw_connections(&self.ckt, &self.display_state.wires, ui.painter());
 
         ui.style_mut().text_styles.insert(
             egui::TextStyle::Body,
@@ -178,30 +148,30 @@ impl SimulatorUI {
         // drawing components and handling evts
         let mut ckt_evts = Vec::new();
         let mut ui_evts = Vec::new();
-        for (id, disp_data) in display_state.display_data.iter_mut() {
+        for (id, disp_data) in self.display_state.display_data.iter_mut() {
             paint_component(
                 disp_data,
                 ui,
-                &ckt,
+                &self.ckt,
                 &mut self.from,
                 &mut ckt_evts,
                 &mut ui_evts,
             );
         }
         for evt in ckt_evts {
-            send_event(&self.ckt_sender, evt);
+            send_event(&mut self.ckt_evts, evt);
         }
         for evt in ui_evts {
-            send_event(&self.ui_sender, evt);
+            send_event(&mut self.ui_evts, evt);
         }
 
         ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
-            let btn = Button::new(if display_state.sync.is_synced() {
+            let btn = Button::new(if self.display_state.sync.is_synced() {
                 "Synced"
             } else {
-                display_state.sync.error_msg()
+                self.display_state.sync.error_msg()
             })
-            .fill(if display_state.sync.is_synced() {
+            .fill(if self.display_state.sync.is_synced() {
                 GREEN_COL
             } else {
                 RED_COL
@@ -209,11 +179,11 @@ impl SimulatorUI {
             ui.add(btn);
             ui.add(Label::new(&format!(
                 "No. of ckt components -> {}",
-                ckt.components().len()
+                self.ckt.components().len()
             )))
         });
-        if !display_state.sync.is_error() {
-            display_state.sync = SyncState::Synced;
+        if !self.display_state.sync.is_error() {
+            self.display_state.sync = SyncState::Synced;
         }
     }
     fn draw_connections(
@@ -242,16 +212,27 @@ impl SimulatorUI {
     }
 }
 
-pub fn send_event<T>(sender: &Sender<T>, evt: T) {
-    if let Err(err) = sender.send(evt) {
-        println!("{}", err.to_string());
-    }
+pub fn send_event<T>(sender: &mut VecDeque<T>, evt: T) {
+    sender.push_back(evt);
 }
 
 impl eframe::App for SimulatorUI {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.ui(ui);
+            ckt_communicate(
+                &mut self.ckt_evts,
+                &mut self.ckt,
+                &mut self.display_state.sync,
+                &mut self.ui_evts,
+            );
+            ui_update(
+                &mut self.ui_evts,
+                &mut self.display_state,
+                &mut self.ckt_evts,
+            );
+            // toggle_clock(&mut self.ckt, &mut self.display_state);
+            self.display_state.ctx.request_repaint();
         });
     }
 }

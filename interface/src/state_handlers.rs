@@ -1,15 +1,15 @@
 use std::{
     cmp::{max, min},
+    collections::VecDeque,
     sync::{Arc, Mutex},
     thread::{self, sleep},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use bsim_engine::{
     circuit::BCircuit,
     types::{ID, PIN},
 };
-use crossbeam::channel::{Receiver, Sender};
 use egui::{pos2, vec2, Color32, Pos2};
 
 use crate::{
@@ -20,36 +20,29 @@ use crate::{
     utils::EmitterReceiverPair,
 };
 
-pub fn toggle_clock(
-    ckt: Arc<Mutex<BCircuit>>,
-    display_state: Arc<Mutex<DisplayState>>,
-    clk_id: ID,
-) -> impl Fn() {
-    move || loop {
-        let delay;
+pub fn toggle_clock(ckt: &mut BCircuit, ds: &mut DisplayState) {
+    //todo: toggle clock based on number of times the screen is repainted
+    // we can keep track of repaints in display_state
+    let dur = 0;
+    if dur > 0 {
         {
             // put in a scope to release the locks before the thread sleeps.
-            let mut ckt = ckt.lock().unwrap();
             // .pulse_clock();
+            let clk_id = ckt.get_clk_id().unwrap();
             let new_state = !ckt.state(clk_id).unwrap();
             ckt.set_component_state(clk_id, new_state).unwrap();
-            let ds = display_state.lock().unwrap();
-            ds.ctx.request_repaint();
-            delay = ds.clk_t;
+            ds.next_clk_toggle = 0 + ds.clk_t;
         }
-        thread::sleep(Duration::from_millis(delay));
     }
 }
 
 pub fn ckt_communicate(
-    receiver: Receiver<CircuitUpdateOps>,
-    update_am: Arc<Mutex<BCircuit>>,
-    sync: Arc<Mutex<SyncState>>,
-    ui_sender: Sender<UiUpdateOps>,
-) -> impl Fn() {
-    move || loop {
-        let rec = receiver.recv().unwrap();
-        let mut ckt = update_am.lock().unwrap();
+    receiver: &mut VecDeque<CircuitUpdateOps>,
+    ckt: &mut BCircuit,
+    sync: &mut SyncState,
+    ui_sender: &mut VecDeque<UiUpdateOps>,
+) {
+    while let Some(rec) = receiver.pop_front() {
         let result = match rec {
             CircuitUpdateOps::SetState(id, val) => ckt.set_component_state(id, val),
             CircuitUpdateOps::Connect(er_pair) => {
@@ -59,7 +52,7 @@ pub fn ckt_communicate(
                     er_pair.emitter.1.id,
                 );
                 if res.is_ok() {
-                    ui_sender.send(UiUpdateOps::Connect(er_pair)).unwrap();
+                    ui_sender.push_back(UiUpdateOps::Connect(er_pair));
                 }
                 res
             }
@@ -70,7 +63,7 @@ pub fn ckt_communicate(
                     er_pair.emitter.1.id,
                 );
                 if res.is_ok() {
-                    ui_sender.send(UiUpdateOps::Disconnect(er_pair)).unwrap();
+                    ui_sender.push_back(UiUpdateOps::Disconnect(er_pair));
                 }
                 res
             }
@@ -84,8 +77,7 @@ pub fn ckt_communicate(
             }
         };
 
-        let mut s = sync.lock().unwrap();
-        *s = match result {
+        *sync = match result {
             Ok(()) => SyncState::NotSynced,
             Err(e) => SyncState::Error(e),
         };
@@ -93,14 +85,11 @@ pub fn ckt_communicate(
 }
 
 pub fn ui_update(
-    receiver: Receiver<UiUpdateOps>,
-    display_state: Arc<Mutex<DisplayState>>,
-    ckt_sender: Sender<CircuitUpdateOps>,
-) -> impl Fn() {
-    move || loop {
-        let rec = receiver.recv().unwrap();
-        let ds = &mut display_state.lock().unwrap();
-
+    receiver: &mut VecDeque<UiUpdateOps>,
+    ds: &mut DisplayState,
+    ckt_sender: &mut VecDeque<CircuitUpdateOps>,
+) {
+    while let Some(rec) = receiver.pop_front() {
         match rec {
             UiUpdateOps::AddComponent(dd) => {
                 ds.display_data.insert(dd.id, dd);
@@ -136,7 +125,7 @@ pub fn ui_update(
                     ds.wires.remove(&rem_key);
                 }
                 for remid in dparams.contents {
-                    ckt_sender.send(CircuitUpdateOps::Remove(remid)).unwrap();
+                    ckt_sender.push_back(CircuitUpdateOps::Remove(remid));
                 }
             }
             UiUpdateOps::Connect(er_pair) => {

@@ -69,6 +69,9 @@ impl BCircuit {
     pub fn clock(&mut self, id: ID) {
         self.clk = Some(id)
     }
+    pub fn get_clk_id(&self) -> Option<ID> {
+        return self.clk;
+    }
     pub fn pulse_clock(&mut self) {
         if self.clk.is_none() {
             return;

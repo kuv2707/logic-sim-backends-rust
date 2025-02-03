@@ -1,15 +1,17 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+#![allow(unused)]
 
 mod app;
 mod component_ui;
 mod consts;
 mod display_elems;
-mod path_find;
-mod state_handler_threads;
-mod update_ops;
 mod logic_units;
+mod path_find;
+mod state_handlers;
+mod update_ops;
 mod utils;
+
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
@@ -44,8 +46,9 @@ fn main() -> eframe::Result {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
+    use app::SimulatorUI;
+    use consts::{GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH};
     use eframe::wasm_bindgen::JsCast as _;
-
     // Redirect `log` message to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
@@ -67,7 +70,10 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(eframe_template::DragAndDropDemo::default()))),
+                Box::new(|cc| {
+                    cc.egui_ctx.request_repaint();
+                    return Ok(Box::new(SimulatorUI::new(cc.egui_ctx.clone())));
+                }),
             )
             .await;
 

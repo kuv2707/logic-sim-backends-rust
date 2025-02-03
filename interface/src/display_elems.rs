@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::SystemTime,
+};
 
 use bsim_engine::types::{ID, PIN};
 use egui::{Color32, Context, Id, Pos2, Vec2};
@@ -61,6 +64,7 @@ pub struct DisplayState {
     pub clk_t: u64,
     pub module_expr_input: String,
     pub sync: SyncState,
+    pub next_clk_toggle: u64,
 }
 
 fn make_screen() -> Screen {
@@ -77,6 +81,7 @@ impl DisplayState {
             clk_t: 1000,
             module_expr_input: String::new(),
             sync: SyncState::Synced,
+            next_clk_toggle: 0,
         };
         // pre-add clock
         let size: Vec2 = (8.0, 4.0).into();
