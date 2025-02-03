@@ -14,7 +14,7 @@ use egui::{pos2, vec2, Color32, Pos2};
 
 use crate::{
     consts::{WINDOW_HEIGHT, WINDOW_WIDTH},
-    display_elems::{DisplayState, Screen, UnitArea, Wire},
+    display_elems::{DisplayState, Screen, UnitArea, Wire, OCCUPIED_WEIGHT},
     path_find::a_star_get_pts,
     update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
     utils::EmitterReceiverPair,
@@ -178,17 +178,8 @@ fn mark_obstacles(ds: &mut DisplayState) {
         let p2 = p1 + vec2(dd.size.x, dd.size.y);
         for x in (max((p1.x - 1.0) as i32, 0))..(min(p2.x as i32 + 1, WINDOW_WIDTH as i32)) {
             for y in (max((p1.y - 1.0) as i32, 0))..(min(p2.y as i32 + 1, WINDOW_HEIGHT as i32)) {
-                ds.screen[y as usize][x as usize] = UnitArea::Unvisitable;
+                ds.screen[y as usize][x as usize] = OCCUPIED_WEIGHT;
             }
-        }
-        for oloc in &dd.outputs_rel {
-            let oloc = dd.logical_loc + oloc.loc_rel;
-            ds.screen[oloc.y as usize][oloc.x as usize] = UnitArea::VACANT;
-        }
-        for iloc in &dd.inputs_rel {
-            let iloc = dd.logical_loc + iloc.loc_rel;
-            ds.screen[iloc.y as usize][iloc.x as usize - 1] = UnitArea::VACANT;
-            ds.screen[iloc.y as usize][iloc.x as usize] = UnitArea::VACANT;
         }
     }
 }
@@ -196,7 +187,7 @@ fn mark_obstacles(ds: &mut DisplayState) {
 fn clear_screen(s: &mut Screen) {
     for row in s.iter_mut() {
         for unit in row.iter_mut() {
-            *unit = UnitArea::VACANT;
+            *unit = 0;
         }
     }
 }

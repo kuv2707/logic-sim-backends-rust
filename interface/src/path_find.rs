@@ -75,9 +75,6 @@ impl PartialEq for OrdPt {
 }
 
 pub fn a_star_get_pts(from: Point, to: Point, scr: &Screen) -> Vec<Point> {
-    if scr[to.1 as usize][to.0 as usize] == UnitArea::Unvisitable {
-        return vec![];
-    }
     let mut open: BinaryHeap<OrdPt> = BinaryHeap::new();
     let mut closed: HashSet<Point> = HashSet::new();
 
@@ -105,12 +102,12 @@ pub fn a_star_get_pts(from: Point, to: Point, scr: &Screen) -> Vec<Point> {
             break;
         }
         for nbp in curr.neighbours() {
-            if closed.contains(&nbp) || scr[nbp.1 as usize][nbp.0 as usize] == UnitArea::Unvisitable
-            {
+            if closed.contains(&nbp) {
                 continue;
             }
 
-            let movement_cost = curr.gcost + heuristic_cost(curr.pos, nbp);
+            let movement_cost =
+                curr.gcost + heuristic_cost(curr.pos, nbp) + scr[nbp.1 as usize][nbp.0 as usize];
             if movement_cost < gh_costs.get(&nbp).unwrap_or(&(Cost::MAX, Cost::MAX)).0 {
                 let new_hcost = heuristic_cost(to, nbp);
                 gh_costs.insert(nbp, (movement_cost, new_hcost));
@@ -124,7 +121,6 @@ pub fn a_star_get_pts(from: Point, to: Point, scr: &Screen) -> Vec<Point> {
             }
         }
     }
-    // println!("{:?} {:?} {} {} {:?}", from, to, scr.len(), scr[0].len(), pts);
     pts
 }
 
@@ -138,7 +134,7 @@ fn heuristic_cost(from: Point, to: Point) -> Cost {
     // we penalize diagonal movement by making its cost
     // 3x that of rectangular movement, to obtain a mostly
     // rectangular path. (c'est beau!)
-    (((x_diff.pow(2) + y_diff.pow(2)) as f64).sqrt()*10000.0) as usize
+    (((x_diff.pow(2) + y_diff.pow(2)) as f64).sqrt() * 10000.0) as usize
     // (x_diff * 21 + (y_diff - x_diff) * 10) as usize
 }
 
@@ -152,13 +148,13 @@ mod tests {
         assert_eq!(heuristic_cost((0, 0), (1, 0)), 10);
     }
     fn make_screen() -> Screen {
-        [[UnitArea::VACANT; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize]
+        [[0; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize]
     }
     #[test]
     fn test_path() {
         let mut s = make_screen();
-        s[7][2] = UnitArea::Unvisitable;
-        s[7][3] = UnitArea::Unvisitable;
+        s[7][2] = 40;
+        s[7][3] = 40;
         let pts = a_star_get_pts((14, 5), (2, 4), &s);
         println!("\n->{:?}", pts);
     }

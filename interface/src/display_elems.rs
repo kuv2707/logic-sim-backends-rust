@@ -4,7 +4,9 @@ use bsim_engine::types::{ID, PIN};
 use egui::{Color32, Context, Id, Pos2, Vec2};
 
 use crate::{
-    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH}, update_ops::SyncState, utils::{CompIO, EmitterReceiverPair}
+    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
+    update_ops::SyncState,
+    utils::{CompIO, EmitterReceiverPair},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -13,7 +15,10 @@ pub enum UnitArea {
     Unvisitable,
 }
 
-pub type Screen = [[UnitArea; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize];
+pub type Weight = usize;
+pub const OCCUPIED_WEIGHT: Weight = 60;
+
+pub type Screen = [[Weight; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize];
 
 pub struct Wire {
     pub emitter: (egui::Id, CompIO),
@@ -59,7 +64,7 @@ pub struct DisplayState {
 }
 
 fn make_screen() -> Screen {
-    [[UnitArea::VACANT; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize]
+    [[0; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize]
 }
 
 impl DisplayState {
@@ -87,7 +92,7 @@ impl DisplayState {
                     id: clk_id,
                     pin: 1,
                     loc_rel: (size.x, size.y / 2.0).into(),
-                    label: String::new()
+                    label: String::new(),
                 }],
                 inputs_rel: vec![],
                 is_clocked: false,

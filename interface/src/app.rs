@@ -333,10 +333,7 @@ fn draw_bg(ui: &mut Ui, s: &Screen) {
 fn print_screen(s: &Screen) {
     for row in s {
         for unit in row {
-            match unit {
-                UnitArea::VACANT => print!(" "),
-                UnitArea::Unvisitable => print!("#"),
-            }
+            print!("{}", if *unit == 0 { " " } else { "#" });
         }
         println!();
     }
