@@ -21,17 +21,15 @@ use crate::{
 };
 
 pub fn toggle_clock(ckt: &mut BCircuit, ds: &mut DisplayState) {
-    //todo: toggle clock based on number of times the screen is repainted
     // we can keep track of repaints in display_state
-    let dur = 0;
-    if dur > 0 {
+
+    if ds.render_cnt % ds.clk_t == 0 {
         {
             // put in a scope to release the locks before the thread sleeps.
             // .pulse_clock();
             let clk_id = ckt.get_clk_id().unwrap();
             let new_state = !ckt.state(clk_id).unwrap();
             ckt.set_component_state(clk_id, new_state).unwrap();
-            ds.next_clk_toggle = 0 + ds.clk_t;
         }
     }
 }

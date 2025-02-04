@@ -61,10 +61,10 @@ pub struct DisplayState {
     pub screen: Screen,
     pub wires: HashMap<EmitterReceiverPair, Wire>,
     pub ctx: Context,
-    pub clk_t: u64,
     pub module_expr_input: String,
     pub sync: SyncState,
-    pub next_clk_toggle: u64,
+    pub render_cnt: u64,
+    pub clk_t: u64,
 }
 
 fn make_screen() -> Screen {
@@ -78,10 +78,10 @@ impl DisplayState {
             screen: make_screen(),
             wires: HashMap::new(),
             ctx,
-            clk_t: 1000,
             module_expr_input: String::new(),
             sync: SyncState::Synced,
-            next_clk_toggle: 0,
+            render_cnt: 0,
+            clk_t: 60,
         };
         // pre-add clock
         let size: Vec2 = (8.0, 4.0).into();

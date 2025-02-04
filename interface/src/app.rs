@@ -2,6 +2,7 @@ use std::{
     cmp::{max, min},
     collections::{HashMap, HashSet, VecDeque},
     f32,
+    ops::RangeInclusive,
     sync::{Arc, Mutex},
     thread,
 };
@@ -12,7 +13,7 @@ use bsim_engine::{
 };
 use egui::{
     pos2, vec2, Align, Button, Color32, Context, FontId, Label, Layout, Painter, Pos2, Rect,
-    Stroke, TextEdit, Ui, Vec2, Widget,
+    Slider, Stroke, TextEdit, Ui, Vec2, Widget,
 };
 
 use crate::{
@@ -52,7 +53,6 @@ impl SimulatorUI {
         let sync_state = SyncState::Synced;
 
         let display_state = DisplayState::init_display_state(clk_id, ctx);
-
 
         let sim = Self {
             ckt,
@@ -137,6 +137,13 @@ impl SimulatorUI {
                 }
                 self.display_state.module_expr_input.clear();
             }
+            let clk_freq =
+                Slider::new(&mut self.display_state.clk_t, RangeInclusive::new(10, 1000));
+            let r = ui.add(clk_freq);
+            r.on_hover_text(format!(
+                "Clock toggles every {} frames.",
+                self.display_state.clk_t
+            ))
         });
         // print_screen(&display_state.screen);
         self.draw_connections(&self.ckt, &self.display_state.wires, ui.painter());
@@ -231,7 +238,9 @@ impl eframe::App for SimulatorUI {
                 &mut self.display_state,
                 &mut self.ckt_evts,
             );
-            // toggle_clock(&mut self.ckt, &mut self.display_state);
+            self.display_state.render_cnt += 1;
+            // todo
+            toggle_clock(&mut self.ckt, &mut self.display_state);
             self.display_state.ctx.request_repaint();
         });
     }
