@@ -19,7 +19,7 @@ pub enum UnitArea {
 }
 
 pub type Weight = usize;
-pub const OCCUPIED_WEIGHT: Weight = 60;
+pub const OCCUPIED_WEIGHT: Weight = 999999;
 
 pub type Screen = [[Weight; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize];
 

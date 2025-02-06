@@ -15,7 +15,7 @@ use egui::{pos2, vec2, Color32, Pos2};
 use crate::{
     consts::{WINDOW_HEIGHT, WINDOW_WIDTH},
     display_elems::{DisplayState, Screen, UnitArea, Wire, OCCUPIED_WEIGHT},
-    path_find::a_star_get_pts,
+    path_finder::a_star_get_pts,
     update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
     utils::EmitterReceiverPair,
 };
@@ -163,8 +163,8 @@ fn mark_obstacles(ds: &mut DisplayState) {
     for (_, dd) in &ds.display_data {
         let p1 = dd.logical_loc;
         let p2 = p1 + vec2(dd.size.x, dd.size.y);
-        for x in (max((p1.x - 1.0) as i32, 0))..(min(p2.x as i32 + 1, WINDOW_WIDTH as i32)) {
-            for y in (max((p1.y - 1.0) as i32, 0))..(min(p2.y as i32 + 1, WINDOW_HEIGHT as i32)) {
+        for x in (p1.x as i32)..(p2.x as i32) {
+            for y in (p1.y as i32)..(p2.y as i32) {
                 ds.screen[y as usize][x as usize] = OCCUPIED_WEIGHT;
             }
         }
