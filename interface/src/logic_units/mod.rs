@@ -22,7 +22,7 @@ pub fn get_logic_unit(ckt: &mut BCircuit, s: &str) -> Result<ModuleCreationData,
     let mut out_ids: HashMap<String, ID> = HashMap::new();
     let mut all_ids = HashSet::new();
     for node in nodes {
-        node.traverse(0);
+        // node.traverse(0);
         let output = traverse_add(&node, ckt, &mut inp_ids, &mut out_ids, &mut all_ids);
         match output {
             Ok(oid) => {}

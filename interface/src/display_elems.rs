@@ -8,6 +8,7 @@ use egui::{Color32, Context, Id, Pos2, Vec2};
 
 use crate::{
     consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
+    top_bar::TopBarOption,
     update_ops::SyncState,
     utils::{CompIO, EmitterReceiverPair},
 };
@@ -57,7 +58,7 @@ pub struct CompDisplayData {
 }
 
 pub struct DisplayState {
-    pub display_data: HashMap<egui::Id, CompDisplayData>,
+    pub comp_display_data: HashMap<egui::Id, CompDisplayData>,
     pub screen: Screen,
     pub wires: HashMap<EmitterReceiverPair, Wire>,
     pub ctx: Context,
@@ -65,6 +66,8 @@ pub struct DisplayState {
     pub sync: SyncState,
     pub render_cnt: u64,
     pub clk_t: u64,
+    pub top_bar_opts: Vec<TopBarOption>,
+    pub connect_candidate: Option<(egui::Id, CompIO)>,
 }
 
 fn make_screen() -> Screen {
@@ -74,7 +77,7 @@ fn make_screen() -> Screen {
 impl DisplayState {
     pub fn init_display_state(clk_id: ID, ctx: Context) -> Self {
         let mut this = Self {
-            display_data: HashMap::new(),
+            comp_display_data: HashMap::new(),
             screen: make_screen(),
             wires: HashMap::new(),
             ctx,
@@ -82,13 +85,15 @@ impl DisplayState {
             sync: SyncState::Synced,
             render_cnt: 0,
             clk_t: 60,
+            top_bar_opts: Vec::new(),
+            connect_candidate: None,
         };
         // pre-add clock
         let size: Vec2 = (8.0, 4.0).into();
         let id = egui::Id::new(clk_id);
         let mut contents = HashSet::new();
         contents.insert(clk_id);
-        this.display_data.insert(
+        this.comp_display_data.insert(
             id,
             CompDisplayData {
                 id,

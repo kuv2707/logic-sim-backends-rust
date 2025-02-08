@@ -17,22 +17,34 @@ use egui::{
 };
 
 use crate::{
-    component_ui::{add_pin_btn, paint_component, PIN_BTN_SIZE},
+    component_ui::{add_pin_btn, paint_component, paint_components, PIN_BTN_SIZE},
     consts::{DEFAULT_SCALE, GREEN_COL, GRID_UNIT_SIZE, RED_COL},
     display_elems::{CompDisplayData, DisplayState, Screen, UnitArea, Wire},
     logic_units::{get_logic_unit, ModuleCreationData},
     state_handlers::{ckt_communicate, toggle_clock, ui_update},
-    update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
+    top_bar::{Modulator, TopBarOption},
+    update_ops::{CircuitUpdateOps, StateUpdateOps, SyncState, UiUpdateOps},
     utils::{CompIO, EmitterReceiverPair},
 };
 
+macro_rules! receive_evts {
+    ($a:ident, $b:expr) => {
+        for k in $b {
+            match k {
+                StateUpdateOps::UiOp(ui_update_ops) => $a.ui_evts.push_back(ui_update_ops),
+                StateUpdateOps::CktOp(circuit_update_ops) => {
+                    $a.ckt_evts.push_back(circuit_update_ops)
+                }
+            };
+        }
+    };
+}
+
 pub struct SimulatorUI {
-    ckt: BCircuit,
+    pub ckt: BCircuit,
     pub display_state: DisplayState,
     pub ckt_evts: VecDeque<CircuitUpdateOps>,
     pub ui_evts: VecDeque<UiUpdateOps>, // todo: shift to display_state
-    pub from: Option<(egui::Id, CompIO)>, //todo: shift to display_state
-    pub available_comp_defns: Vec<(String, usize)>,
 }
 
 impl SimulatorUI {
@@ -43,100 +55,47 @@ impl SimulatorUI {
         let clk_id = ckt.add_input("CLK", false);
         ckt.clock(clk_id);
 
-        let mut available_comp_defns: Vec<(String, usize)> = ckt
+        let mut display_state = DisplayState::init_display_state(clk_id, ctx);
+
+        let mut available_comp_names: Vec<String> = ckt
             .component_definitions
             .values()
-            .map(|v| (v.name.clone(), v.default_inputs as usize))
+            .map(|v| v.name.clone())
             .collect();
-        available_comp_defns.sort();
-
-        let sync_state = SyncState::Synced;
-
-        let display_state = DisplayState::init_display_state(clk_id, ctx);
-
+        available_comp_names.sort();
+        for name in available_comp_names {
+            display_state
+                .top_bar_opts
+                .push(TopBarOption::AddComponent { name });
+        }
+        display_state
+            .top_bar_opts
+            .push(TopBarOption::AddModuleFromText {
+                typed_text: String::new(),
+                modulator: Modulator::Expressions,
+            });
+        display_state
+            .top_bar_opts
+            .push(TopBarOption::AddModuleFromText {
+                typed_text: "3x8".into(),
+                modulator: Modulator::Decoder,
+            });
         let sim = Self {
             ckt,
             display_state,
             ckt_evts: VecDeque::new(),
             ui_evts: VecDeque::new(),
-            from: None,
-            available_comp_defns,
         };
         sim
     }
     fn ui(&mut self, ui: &mut Ui) {
         draw_bg(ui, &self.display_state.screen);
-        let display_data = &self.display_state.display_data;
-        let ui_sender = &mut self.ui_evts;
         ui.horizontal(|ui| {
-            for (i, (name, n_inp)) in self.available_comp_defns.iter().enumerate() {
-                let button = egui::Button::new(name).min_size(Vec2::new(80.0, 40.0));
-                let response = button.ui(ui);
-                if response.clicked() {
-                    let id = match name.as_str() {
-                        "Input" => self.ckt.add_input("", false),
-                        _ => self.ckt.add_component(name, "").unwrap(),
-                    };
-                    let gate = self.ckt.get_component(&id).unwrap().borrow();
-                    let loc = egui::pos2(40.0 + 80.0 * i as f32, 100.0) / GRID_UNIT_SIZE;
-                    let size: Vec2 = (8.0, 8.0).into();
-                    let spc = size.y / (n_inp + 1) as f32;
-                    let inputs_rel = (0..*n_inp + 1)
-                        .map(|i| {
-                            CompIO {
-                                id,
-                                pin: i,
-                                loc_rel: if i == 0 {
-                                    // clock
-                                    vec2(size.x / 2.0, size.y)
-                                } else {
-                                    vec2(0.0, spc * i as f32)
-                                },
-                                label: String::new(),
-                            }
-                        })
-                        .collect();
-                    let mut contents = HashSet::new();
-                    contents.insert(id);
-                    let data = CompDisplayData {
-                        id: egui::Id::new(id),
-                        logical_loc: loc,
-                        name: name.into(),
-                        label: gate.label.clone(),
-                        outputs_rel: vec![CompIO {
-                            id,
-                            pin: 1,
-                            loc_rel: vec2(size.x, size.y / 2.0),
-                            label: String::new(),
-                        }],
-                        inputs_rel,
-                        is_clocked: gate.clock_manager.is_some(),
-                        scale: DEFAULT_SCALE,
-                        size,
-                        is_module: false,
-                        state_indicator_ref: Some(id),
-                        contents,
-                    };
-
-                    send_event(ui_sender, UiUpdateOps::AddComponent(data));
-                }
+            for opt in &mut self.display_state.top_bar_opts {
+                receive_evts!(self, opt.render(&mut self.ckt, ui));
             }
 
-            let response = ui.text_edit_singleline(&mut self.display_state.module_expr_input);
-            if response.lost_focus() {
-                match get_disp_data_from_modctx(get_logic_unit(
-                    &mut self.ckt,
-                    &self.display_state.module_expr_input,
-                )) {
-                    Ok(data) => {
-                        send_event(ui_sender, UiUpdateOps::AddComponent(data));
-                    }
-                    Err(e) => {
-                        // todo: show msg that expr was bad
-                    }
-                }
-                self.display_state.module_expr_input.clear();
-            }
+            // todo: move to settings
             let clk_freq =
                 Slider::new(&mut self.display_state.clk_t, RangeInclusive::new(10, 1000));
             let r = ui.add(clk_freq);
@@ -152,25 +111,11 @@ impl SimulatorUI {
             egui::TextStyle::Body,
             FontId::new(8.0, egui::FontFamily::Monospace),
         );
-        // drawing components and handling evts
-        let mut ckt_evts = Vec::new();
-        let mut ui_evts = Vec::new();
-        for (id, disp_data) in self.display_state.display_data.iter_mut() {
-            paint_component(
-                disp_data,
-                ui,
-                &self.ckt,
-                &mut self.from,
-                &mut ckt_evts,
-                &mut ui_evts,
-            );
-        }
-        for evt in ckt_evts {
-            send_event(&mut self.ckt_evts, evt);
-        }
-        for evt in ui_evts {
-            send_event(&mut self.ui_evts, evt);
-        }
+
+        receive_evts!(
+            self,
+            paint_components(&mut self.display_state, &self.ckt, ui)
+        );
 
         ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
             let btn = Button::new(if self.display_state.sync.is_synced() {
@@ -217,10 +162,14 @@ impl SimulatorUI {
             );
         }
     }
-}
-
-pub fn send_event<T>(sender: &mut VecDeque<T>, evt: T) {
-    sender.push_back(evt);
+    pub fn send_event(&mut self, evt: StateUpdateOps) {
+        match evt {
+            StateUpdateOps::UiOp(ui_update_ops) => self.ui_evts.push_back(ui_update_ops),
+            StateUpdateOps::CktOp(circuit_update_ops) => {
+                self.ckt_evts.push_back(circuit_update_ops)
+            }
+        }
+    }
 }
 
 impl eframe::App for SimulatorUI {
@@ -243,56 +192,6 @@ impl eframe::App for SimulatorUI {
             toggle_clock(&mut self.ckt, &mut self.display_state);
             self.display_state.ctx.request_repaint();
         });
-    }
-}
-
-fn get_disp_data_from_modctx(
-    res: Result<ModuleCreationData, String>,
-) -> Result<CompDisplayData, String> {
-    match res {
-        Ok(ctx) => {
-            let ipins = ctx.inputs;
-            let opins = ctx.outputs;
-            let contents = ctx.contents;
-            let size: Vec2 = (8.0, 2.0 * (max(ipins.len(), opins.len())) as f32).into();
-
-            let i_gap = size.y / (ipins.len() + 1) as f32;
-            let o_gap = size.y / (opins.len() + 1) as f32;
-            let data = CompDisplayData {
-                id: egui::Id::new(contents.iter().next().unwrap()),
-                logical_loc: (7.0, 7.0).into(),
-                name: "module".into(),
-                label: "".into(),
-                outputs_rel: opins
-                    .iter()
-                    .enumerate()
-                    .map(|(i, id)| CompIO {
-                        id: *id.1,
-                        pin: 1,
-                        loc_rel: vec2(size.x, o_gap * (i + 1) as f32),
-                        label: id.0.to_string(),
-                    })
-                    .collect(),
-                inputs_rel: ipins
-                    .iter()
-                    .enumerate()
-                    .map(|(i, id)| CompIO {
-                        id: *id.1,
-                        pin: 1,
-                        loc_rel: vec2(0.0, i_gap * (i + 1) as f32),
-                        label: id.0.to_string(),
-                    })
-                    .collect(),
-                is_clocked: true, // todo
-                is_module: true,
-                scale: DEFAULT_SCALE,
-                size,
-                state_indicator_ref: None,
-                contents,
-            };
-            Ok(data)
-        }
-        Err(e) => Err(e),
     }
 }
 

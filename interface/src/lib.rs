@@ -7,3 +7,4 @@ mod path_finder;
 mod state_handlers;
 mod update_ops;
 mod utils;
+mod top_bar;

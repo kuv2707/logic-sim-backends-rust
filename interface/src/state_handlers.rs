@@ -90,7 +90,8 @@ pub fn ui_update(
     while let Some(rec) = receiver.pop_front() {
         match rec {
             UiUpdateOps::AddComponent(dd) => {
-                ds.display_data.insert(dd.id, dd);
+                println!("added comp {}", dd.size);
+                ds.comp_display_data.insert(dd.id, dd);
                 mark_obstacles(ds);
             }
             UiUpdateOps::Dragged => {
@@ -107,7 +108,7 @@ pub fn ui_update(
                 clear_screen(&mut ds.screen);
                 mark_obstacles(ds);
                 let dparams = ds
-                    .display_data
+                    .comp_display_data
                     .remove(&id)
                     .expect("Can't remove it as it is already absent! STALE UI!!");
 
@@ -160,7 +161,7 @@ fn update_wires(ds: &mut DisplayState) {
 }
 
 fn mark_obstacles(ds: &mut DisplayState) {
-    for (_, dd) in &ds.display_data {
+    for (_, dd) in &ds.comp_display_data {
         let p1 = dd.logical_loc;
         let p2 = p1 + vec2(dd.size.x, dd.size.y);
         for x in (p1.x as i32)..(p2.x as i32) {
@@ -180,10 +181,10 @@ fn clear_screen(s: &mut Screen) {
 }
 
 fn find_path(ds: &DisplayState, er_pair: &EmitterReceiverPair) -> Vec<Pos2> {
-    let oploc = ds.display_data.get(&er_pair.emitter.0).unwrap();
+    let oploc = ds.comp_display_data.get(&er_pair.emitter.0).unwrap();
     let oploc = oploc.logical_loc + er_pair.emitter.1.loc_rel;
 
-    let iploc = ds.display_data.get(&er_pair.receiver.0).unwrap();
+    let iploc = ds.comp_display_data.get(&er_pair.receiver.0).unwrap();
     let iploc = iploc.logical_loc + er_pair.receiver.1.loc_rel;
 
     a_star_get_pts(

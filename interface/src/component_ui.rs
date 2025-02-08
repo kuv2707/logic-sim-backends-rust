@@ -4,26 +4,46 @@ use bsim_engine::{
     types::{CompType, ID},
 };
 use egui::{
-    epaint::CubicBezierShape, vec2, Button, Color32, FontId, Label, Painter, Pos2, Rect, Response,
-    Rounding, Sense, Stroke, TextEdit, Ui, Vec2,
+    epaint::CubicBezierShape, vec2, Button, Color32, FontId, Id, Label, Painter, Pos2, Rect,
+    Response, Rounding, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 
 use crate::{
+    app::SimulatorUI,
     consts::{GREEN_COL, GRID_UNIT_SIZE, RED_COL, WINDOW_HEIGHT, WINDOW_WIDTH},
-    display_elems::CompDisplayData,
-    update_ops::{CircuitUpdateOps, UiUpdateOps},
+    display_elems::{CompDisplayData, DisplayState},
+    update_ops::{self, CircuitUpdateOps, StateUpdateOps, UiUpdateOps},
     utils::{CompIO, EmitterReceiverPair},
 };
 
 pub const PIN_BTN_SIZE: f32 = 10.0;
 
-pub fn paint_component(
-    disp_params: &mut CompDisplayData,
-    ui: &mut Ui,
+pub fn paint_components(
+    display_state: &mut DisplayState,
     ckt: &BCircuit,
-    from: &mut Option<(egui::Id, CompIO)>,
-    ckt_evts: &mut Vec<CircuitUpdateOps>,
-    ui_evts: &mut Vec<UiUpdateOps>,
+    ui: &mut Ui,
+) -> Vec<StateUpdateOps> {
+    let mut ret = Vec::new();
+    for v in &mut display_state.comp_display_data {
+        paint_component(
+            v.0,
+            v.1,
+            &ckt,
+            ui,
+            &mut display_state.connect_candidate,
+            &mut ret,
+        );
+    }
+    ret
+}
+
+pub fn paint_component(
+    id: &egui::Id,
+    disp_params: &mut CompDisplayData,
+    ckt: &BCircuit,
+    ui: &mut Ui,
+    conn_cand: &mut Option<(egui::Id, CompIO)>,
+    update_ops: &mut Vec<StateUpdateOps>,
 ) {
     let container = egui::Rect::from_min_size(
         disp_params.logical_loc * GRID_UNIT_SIZE,
@@ -32,12 +52,13 @@ pub fn paint_component(
     let is_clk = disp_params.name == "CLK";
     let al = ui.allocate_rect(container, Sense::click_and_drag());
 
-    // todo: this should only be Some() when the component isn't a module
-    let gate = match ckt.components().get(&disp_params.outputs_rel[0].id) {
-        Some(g) => g,
-        None => return,
-    }
-    .borrow();
+    let gate = match &disp_params.state_indicator_ref {
+        Some(id) => match ckt.components().get(id) {
+            Some(g) => Some(g),
+            None => None,
+        },
+        None => None,
+    };
 
     if ui.is_rect_visible(container) {
         draw_component_shape(
@@ -47,7 +68,10 @@ pub fn paint_component(
             if disp_params.is_module {
                 None
             } else {
-                Some(gate.state)
+                Some(match gate {
+                    Some(g) => g.borrow().state,
+                    None => false,
+                })
             },
         );
     }
@@ -71,9 +95,9 @@ pub fn paint_component(
         .clicked()
         {
             let bks = is_ctrl_pressed(ui);
-            match from {
+            match conn_cand {
                 Some(id) => {
-                    ckt_evts.push(if bks {
+                    update_ops.push(StateUpdateOps::CktOp(if bks {
                         CircuitUpdateOps::Disconnect(EmitterReceiverPair {
                             emitter: id.clone(),
                             receiver: (disp_params.id, port.clone()),
@@ -83,7 +107,7 @@ pub fn paint_component(
                             emitter: id.clone(),
                             receiver: (disp_params.id, port.clone()),
                         })
-                    });
+                    }));
                 }
                 None => {}
             }
@@ -95,7 +119,7 @@ pub fn paint_component(
             container,
             port,
             ui,
-            match from {
+            match conn_cand {
                 Some((_, pininfo)) => port.id == pininfo.id,
                 None => false,
             },
@@ -103,7 +127,7 @@ pub fn paint_component(
         )
         .clicked()
         {
-            *from = match from {
+            *conn_cand = match conn_cand {
                 Some((id, pininfo)) => {
                     if port.id == pininfo.id {
                         // clicking on the same pin btn twice deselects it
@@ -113,7 +137,7 @@ pub fn paint_component(
                     }
                 }
                 None => Some((disp_params.id, port.clone())),
-            }
+            };
         }
     }
 
@@ -125,12 +149,12 @@ pub fn paint_component(
             .put(Rect::from_min_max(min, min + (4.0, 8.0).into()), ted)
             .lost_focus()
         {
-            ckt_evts.push(CircuitUpdateOps::SetComponentLabel(
+            update_ops.push(StateUpdateOps::CktOp(CircuitUpdateOps::SetComponentLabel(
                 disp_params.outputs_rel[0].id, //todo: what would it mean for a module
                 // gate.label.clone(),
                 "".into(),
                 disp_params.label.clone(),
-            ));
+            )));
         }
     } else {
         ui.put(
@@ -163,20 +187,27 @@ pub fn paint_component(
 
         disp_params.logical_loc.x = newx;
         disp_params.logical_loc.y = newy;
-        ui_evts.push(UiUpdateOps::Dragged);
+        update_ops.push(StateUpdateOps::UiOp(UiUpdateOps::Dragged));
     }
 
     if r.clicked() && !is_clk {
         if is_ctrl_pressed(ui) {
-            ui_evts.push(UiUpdateOps::RemoveComponent(disp_params.id));
+            update_ops.push(StateUpdateOps::UiOp(UiUpdateOps::RemoveComponent(
+                disp_params.id,
+            )));
         } else {
-            ui_evts.push(UiUpdateOps::Select(disp_params.id));
+            update_ops.push(StateUpdateOps::UiOp(UiUpdateOps::Select(disp_params.id)));
 
-            if gate.comp_type == CompType::Input {
-                ckt_evts.push(CircuitUpdateOps::SetState(
-                    disp_params.outputs_rel[0].id,
-                    !gate.state,
-                ));
+            match gate {
+                Some(gate) => {
+                    if gate.borrow().comp_type == CompType::Input {
+                        update_ops.push(StateUpdateOps::CktOp(CircuitUpdateOps::SetState(
+                            disp_params.outputs_rel[0].id,
+                            !gate.borrow().state,
+                        )));
+                    }
+                }
+                None => {}
             }
         }
     }

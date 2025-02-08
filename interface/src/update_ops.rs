@@ -41,3 +41,8 @@ pub enum UiUpdateOps {
     Disconnect(EmitterReceiverPair),
     Select(egui::Id),
 }
+
+pub enum StateUpdateOps {
+    UiOp(UiUpdateOps),
+    CktOp(CircuitUpdateOps),
+}
