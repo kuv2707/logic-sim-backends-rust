@@ -24,3 +24,14 @@ pub struct EmitterReceiverPair {
     pub emitter: (egui::Id, CompIO),
     pub receiver: (egui::Id, CompIO),
 }
+
+#[macro_export]
+macro_rules! true_false_color {
+    ($a: expr) => {
+        if $a {
+            $crate::consts::GREEN_COL
+        } else {
+            $crate::consts::RED_COL
+        }
+    };
+}

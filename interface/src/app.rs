@@ -1,30 +1,22 @@
 use std::{
-    cmp::{max, min},
-    collections::{HashMap, HashSet, VecDeque},
-    f32,
+    collections::{HashMap, VecDeque},
     ops::RangeInclusive,
-    sync::{Arc, Mutex},
-    thread,
 };
 
-use bsim_engine::{
-    circuit::BCircuit,
-    types::{CLOCK_PIN, ID, PIN},
-};
+use bsim_engine::circuit::BCircuit;
 use egui::{
-    pos2, vec2, Align, Button, Color32, Context, FontId, Label, Layout, Painter, Pos2, Rect,
-    Slider, Stroke, TextEdit, Ui, Vec2, Widget,
+    pos2, Align, Button, Color32, Context, FontId, Label, Layout, Painter, Slider, Stroke, Ui,
 };
 
 use crate::{
-    component_ui::{add_pin_btn, paint_component, paint_components, PIN_BTN_SIZE},
-    consts::{DEFAULT_SCALE, GREEN_COL, GRID_UNIT_SIZE, RED_COL},
-    display_elems::{CompDisplayData, DisplayState, Screen, UnitArea, Wire},
-    logic_units::{get_logic_unit, ModuleCreationData},
+    component_ui::paint_components,
+    consts::GRID_UNIT_SIZE,
+    display_elems::{DisplayState, Screen, Wire},
     state_handlers::{ckt_communicate, toggle_clock, ui_update},
     top_bar::{Modulator, TopBarOption},
+    true_false_color,
     update_ops::{CircuitUpdateOps, StateUpdateOps, SyncState, UiUpdateOps},
-    utils::{CompIO, EmitterReceiverPair},
+    utils::EmitterReceiverPair,
 };
 
 macro_rules! receive_evts {
@@ -73,12 +65,14 @@ impl SimulatorUI {
             .push(TopBarOption::AddModuleFromText {
                 typed_text: String::new(),
                 modulator: Modulator::Expressions,
+                enter_text: "Add expressions".into(),
             });
         display_state
             .top_bar_opts
             .push(TopBarOption::AddModuleFromText {
                 typed_text: "3x8".into(),
                 modulator: Modulator::Decoder,
+                enter_text: "Add decoder".into(),
             });
         let sim = Self {
             ckt,
@@ -123,11 +117,7 @@ impl SimulatorUI {
             } else {
                 self.display_state.sync.error_msg()
             })
-            .fill(if self.display_state.sync.is_synced() {
-                GREEN_COL
-            } else {
-                RED_COL
-            });
+            .fill(true_false_color!(self.display_state.sync.is_synced()));
             ui.add(btn);
             ui.add(Label::new(&format!(
                 "No. of ckt components -> {}",
@@ -145,17 +135,13 @@ impl SimulatorUI {
         pt: &Painter,
     ) {
         for wire in wires.values() {
-            let col = if ckt
-                .components()
-                .get(&wire.emitter.1.id)
-                .unwrap()
-                .borrow()
-                .state
-            {
-                GREEN_COL
-            } else {
-                RED_COL
-            };
+            let col = true_false_color!(
+                ckt.components()
+                    .get(&wire.emitter.1.id)
+                    .unwrap()
+                    .borrow()
+                    .state
+            );
             pt.line(
                 wire.pts.iter().map(|k| *k * GRID_UNIT_SIZE).collect(),
                 Stroke::new(wire.width, col),
@@ -190,6 +176,7 @@ impl eframe::App for SimulatorUI {
             self.display_state.render_cnt += 1;
             // todo
             toggle_clock(&mut self.ckt, &mut self.display_state);
+            self.display_state.screen.resize_to(ctx.available_rect());
             self.display_state.ctx.request_repaint();
         });
     }
@@ -199,18 +186,18 @@ fn draw_bg(ui: &mut Ui, s: &Screen) {
     let p = ui.painter();
     p.rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(34, 37, 42));
     let stroke = Stroke::new(1.0, Color32::from_rgb(52, 56, 65));
-    for y in 0..s.len() {
+    for y in 0..s.logical_height() {
         p.line(
-            vec![(0, y), (s[0].len(), y)]
+            vec![(0, y), (s.logical_width(), y)]
                 .iter()
                 .map(|v| pos2(v.0 as f32, v.1 as f32) * GRID_UNIT_SIZE)
                 .collect(),
             stroke,
         );
     }
-    for x in 0..s[0].len() {
+    for x in 0..s.logical_width() {
         p.line(
-            vec![(x, 0), (x, s.len())]
+            vec![(x, 0), (x, s.logical_height())]
                 .iter()
                 .map(|v| pos2(v.0 as f32, v.1 as f32) * GRID_UNIT_SIZE)
                 .collect(),
@@ -220,7 +207,7 @@ fn draw_bg(ui: &mut Ui, s: &Screen) {
 }
 
 fn print_screen(s: &Screen) {
-    for row in s {
+    for row in &s.weights {
         for unit in row {
             print!("{}", if *unit == 0 { " " } else { "#" });
         }

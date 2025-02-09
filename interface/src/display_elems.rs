@@ -1,28 +1,58 @@
-use std::{
-    collections::{HashMap, HashSet},
-    time::SystemTime,
-};
+use std::collections::{HashMap, HashSet};
 
 use bsim_engine::types::{ID, PIN};
-use egui::{Color32, Context, Id, Pos2, Vec2};
+use egui::{Context, Id, Pos2, Rect, Vec2};
 
 use crate::{
-    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE, WINDOW_HEIGHT, WINDOW_WIDTH},
+    consts::{DEFAULT_SCALE, GRID_UNIT_SIZE},
     top_bar::TopBarOption,
     update_ops::SyncState,
     utils::{CompIO, EmitterReceiverPair},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum UnitArea {
-    VACANT,
-    Unvisitable,
-}
-
 pub type Weight = usize;
 pub const OCCUPIED_WEIGHT: Weight = 999999;
 
-pub type Screen = [[Weight; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize];
+pub struct Screen {
+    width: usize,
+    height: usize,
+    pub weights: Vec<Vec<Weight>>,
+}
+impl Screen {
+    pub fn new(width: usize, height: usize) -> Self {
+        let weights = vec![vec![0; width]; height];
+        Screen {
+            weights,
+            width,
+            height,
+        }
+    }
+    pub fn at(&self, x: usize, y: usize) -> Option<&Weight> {
+        if x < self.width && y < self.height {
+            Some(&self.weights[y][x])
+        } else {
+            None
+        }
+    }
+
+    pub fn logical_width(&self) -> usize {
+        self.width
+    }
+
+    pub fn logical_height(&self) -> usize {
+        self.height
+    }
+    pub fn resize_to(&mut self, r: Rect) {
+        let neww = r.width() as usize;
+        let newh = r.height() as usize;
+        self.weights.resize_with(newh, || vec![0; neww]);
+        for row in &mut self.weights {
+            row.resize(neww, 0);
+        }
+        self.width = neww;
+        self.height = newh;
+    }
+}
 
 pub struct Wire {
     pub emitter: (egui::Id, CompIO),
@@ -70,15 +100,11 @@ pub struct DisplayState {
     pub connect_candidate: Option<(egui::Id, CompIO)>,
 }
 
-fn make_screen() -> Screen {
-    [[0; WINDOW_WIDTH as usize]; WINDOW_HEIGHT as usize]
-}
-
 impl DisplayState {
     pub fn init_display_state(clk_id: ID, ctx: Context) -> Self {
         let mut this = Self {
             comp_display_data: HashMap::new(),
-            screen: make_screen(),
+            screen: Screen::new(140, 80),
             wires: HashMap::new(),
             ctx,
             module_expr_input: String::new(),

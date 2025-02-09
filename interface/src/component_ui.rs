@@ -1,3 +1,5 @@
+use std::cmp::max;
+
 use bsim_engine::{
     circuit::BCircuit,
     components::Gate,
@@ -10,8 +12,9 @@ use egui::{
 
 use crate::{
     app::SimulatorUI,
-    consts::{GREEN_COL, GRID_UNIT_SIZE, RED_COL, WINDOW_HEIGHT, WINDOW_WIDTH},
-    display_elems::{CompDisplayData, DisplayState},
+    consts::{GREEN_COL, GRID_UNIT_SIZE, RED_COL},
+    display_elems::{CompDisplayData, DisplayState, Screen},
+    true_false_color,
     update_ops::{self, CircuitUpdateOps, StateUpdateOps, UiUpdateOps},
     utils::{CompIO, EmitterReceiverPair},
 };
@@ -32,6 +35,7 @@ pub fn paint_components(
             ui,
             &mut display_state.connect_candidate,
             &mut ret,
+            &display_state.screen,
         );
     }
     ret
@@ -44,6 +48,7 @@ pub fn paint_component(
     ui: &mut Ui,
     conn_cand: &mut Option<(egui::Id, CompIO)>,
     update_ops: &mut Vec<StateUpdateOps>,
+    scr: &Screen,
 ) {
     let container = egui::Rect::from_min_size(
         disp_params.logical_loc * GRID_UNIT_SIZE,
@@ -167,24 +172,12 @@ pub fn paint_component(
     if r.dragged() {
         let k = ui.input(|i| i.pointer.interact_pos().unwrap());
         let mut newx = (k.x / GRID_UNIT_SIZE).floor() - disp_params.size.x / 2.0;
-        if newx + disp_params.size.x >= WINDOW_WIDTH - 2.0 {
-            // for safety
-            newx = WINDOW_WIDTH - disp_params.size.x - 2.0;
-        }
-        if newx < 2.0 {
-            newx = 2.0;
-        }
-
         let mut newy = (k.y / GRID_UNIT_SIZE).floor() - disp_params.size.y / 2.0;
-        if newy + disp_params.size.y >= WINDOW_HEIGHT - 2.0 {
-            // for safety
-            newy = WINDOW_HEIGHT - disp_params.size.y - 2.0;
-        }
-        if newy < 6.0 {
-            // to avoid menu buttons etc
-            newy = 6.0;
-        }
 
+        newx = newx.max(2.0);
+        newx = newx.min(scr.logical_width() as f32 - disp_params.size.x - 2.0);
+        newy = newy.max(6.0);
+        newy = newy.min(scr.logical_height() as f32 - disp_params.size.y - 2.0);
         disp_params.logical_loc.x = newx;
         disp_params.logical_loc.y = newy;
         update_ops.push(StateUpdateOps::UiOp(UiUpdateOps::Dragged));
@@ -257,11 +250,7 @@ fn draw_component_shape(
 ) {
     let color = match state {
         Some(state) => {
-            if state {
-                GREEN_COL
-            } else {
-                RED_COL
-            }
+            true_false_color!(state)
         }
         None => egui::Color32::from_rgb(19, 19, 19),
     };
@@ -336,7 +325,7 @@ fn draw_component_shape(
             }
         }
         _ => {
-            painter.rect_filled(container, 8.0, if state { GREEN_COL } else { RED_COL });
+            painter.rect_filled(container, 8.0, true_false_color!(state));
         }
     };
     // painter.rect_stroke(container, 8.0, Stroke::new(2.0, Color32::BLACK));

@@ -1,20 +1,10 @@
-use std::{
-    cmp::{max, min},
-    collections::VecDeque,
-    sync::{Arc, Mutex},
-    thread::{self, sleep},
-    time::{Duration, SystemTime},
-};
+use std::collections::VecDeque;
 
-use bsim_engine::{
-    circuit::BCircuit,
-    types::{ID, PIN},
-};
-use egui::{pos2, vec2, Color32, Pos2};
+use bsim_engine::circuit::BCircuit;
+use egui::{pos2, vec2, Pos2};
 
 use crate::{
-    consts::{WINDOW_HEIGHT, WINDOW_WIDTH},
-    display_elems::{DisplayState, Screen, UnitArea, Wire, OCCUPIED_WEIGHT},
+    display_elems::{DisplayState, Screen, Wire, OCCUPIED_WEIGHT},
     path_finder::a_star_get_pts,
     update_ops::{CircuitUpdateOps, SyncState, UiUpdateOps},
     utils::EmitterReceiverPair,
@@ -90,7 +80,6 @@ pub fn ui_update(
     while let Some(rec) = receiver.pop_front() {
         match rec {
             UiUpdateOps::AddComponent(dd) => {
-                println!("added comp {}", dd.size);
                 ds.comp_display_data.insert(dd.id, dd);
                 mark_obstacles(ds);
             }
@@ -166,14 +155,14 @@ fn mark_obstacles(ds: &mut DisplayState) {
         let p2 = p1 + vec2(dd.size.x, dd.size.y);
         for x in (p1.x as i32)..(p2.x as i32) {
             for y in (p1.y as i32)..(p2.y as i32) {
-                ds.screen[y as usize][x as usize] = OCCUPIED_WEIGHT;
+                ds.screen.weights[y as usize][x as usize] = OCCUPIED_WEIGHT;
             }
         }
     }
 }
 
 fn clear_screen(s: &mut Screen) {
-    for row in s.iter_mut() {
+    for row in s.weights.iter_mut() {
         for unit in row.iter_mut() {
             *unit = 0;
         }

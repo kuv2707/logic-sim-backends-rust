@@ -4,10 +4,7 @@ use std::{
     mem::swap,
 };
 
-use crate::{
-    consts::{WINDOW_HEIGHT, WINDOW_WIDTH},
-    display_elems::Screen,
-};
+use crate::display_elems::Screen;
 
 type Cost = usize;
 type Point = (i32, i32);
@@ -27,18 +24,18 @@ const DIRS: [[i32; 2]; 8] = [
     [-1, -1],
 ];
 
-fn neighbours(p: &Point) -> Vec<Point> {
+fn neighbours(p: &Point, scr: &Screen) -> Vec<Point> {
     let mut nbrs = Vec::new();
     for mov in DIRS {
         let p = ((p.0 as i32 + mov[0]), (p.1 as i32 + mov[1]));
-        if is_valid(p.0, p.1) {
+        if is_valid(p.0, p.1, scr) {
             nbrs.push(p);
         }
     }
     nbrs
 }
-fn is_valid(i: i32, j: i32) -> bool {
-    i >= 0 && j >= 0 && i < (WINDOW_WIDTH as i32) && j < (WINDOW_HEIGHT as i32)
+fn is_valid(i: i32, j: i32, scr: &Screen) -> bool {
+    i >= 0 && j >= 0 && i < (scr.logical_width() as i32) && j < (scr.logical_height() as i32)
 }
 
 pub fn a_star_get_pts(from: Point, to: Point, scr: &Screen) -> Vec<Point> {
@@ -68,14 +65,14 @@ pub fn a_star_get_pts(from: Point, to: Point, scr: &Screen) -> Vec<Point> {
             }
             return pts;
         }
-        for nbp in neighbours(&curr_pt) {
+        for nbp in neighbours(&curr_pt, scr) {
             if visited.contains(&nbp) {
                 continue;
             }
 
             let movement_cost = g_costs_so_far.get(&curr_pt).unwrap()
                 + heuristic_cost(curr_pt, nbp)
-                + scr[nbp.1 as usize][nbp.0 as usize];
+                + scr.weights[nbp.1 as usize][nbp.0 as usize];
 
             if movement_cost < *g_costs_so_far.get(&nbp).unwrap_or(&Cost::MAX) {
                 let h_cost = heuristic_cost(to, nbp);

@@ -23,6 +23,7 @@ pub enum TopBarOption {
     AddModuleFromText {
         typed_text: String,
         modulator: Modulator,
+        enter_text: String,
     },
 }
 
@@ -60,7 +61,6 @@ impl Modulator {
                                 }
                             }
                             result.push(format!("{} = {}", i, temp.join(".")));
-                            println!("{}", result.last().unwrap());
                         }
                         return result.join(";");
                     }
@@ -91,10 +91,11 @@ impl TopBarOption {
             Self::AddModuleFromText {
                 typed_text,
                 modulator,
+                enter_text,
             } => {
                 ui.vertical(|ui| {
                     ui.add(TextEdit::singleline(typed_text).desired_width(80.0));
-                    if ui.add(Button::new("Add")).clicked() {
+                    if ui.add(Button::new(enter_text.as_str())).clicked() {
                         match get_disp_data_from_modctx(get_logic_unit(
                             ckt,
                             &modulator.modulate(typed_text),
