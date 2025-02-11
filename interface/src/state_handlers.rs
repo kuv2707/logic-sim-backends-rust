@@ -152,7 +152,7 @@ fn update_wires(ds: &mut DisplayState) {
 fn mark_obstacles(ds: &mut DisplayState) {
     for (_, dd) in &ds.comp_display_data {
         let p1 = dd.logical_loc;
-        let p2 = p1 + vec2(dd.size.x, dd.size.y);
+        let p2 = p1 + vec2(dd.size.x*dd.scale, dd.size.y*dd.scale);
         for x in (p1.x as i32)..(p2.x as i32) {
             for y in (p1.y as i32)..(p2.y as i32) {
                 ds.screen.weights[y as usize][x as usize] = OCCUPIED_WEIGHT;
@@ -170,11 +170,11 @@ fn clear_screen(s: &mut Screen) {
 }
 
 fn find_path(ds: &DisplayState, er_pair: &EmitterReceiverPair) -> Vec<Pos2> {
-    let oploc = ds.comp_display_data.get(&er_pair.emitter.0).unwrap();
-    let oploc = oploc.logical_loc + er_pair.emitter.1.loc_rel;
+    let opdata = ds.comp_display_data.get(&er_pair.emitter.0).unwrap();
+    let oploc = opdata.logical_loc + er_pair.emitter.1.loc_rel * opdata.scale;
 
-    let iploc = ds.comp_display_data.get(&er_pair.receiver.0).unwrap();
-    let iploc = iploc.logical_loc + er_pair.receiver.1.loc_rel;
+    let ipdata = ds.comp_display_data.get(&er_pair.receiver.0).unwrap();
+    let iploc = ipdata.logical_loc + er_pair.receiver.1.loc_rel * ipdata.scale;
 
     a_star_get_pts(
         (oploc.x as i32, oploc.y as i32),

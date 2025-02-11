@@ -79,7 +79,6 @@ pub struct CompDisplayData {
     // pub input_locs_rel: Vec<Vec2>,
     pub inputs_rel: Vec<CompIO>,
     pub is_clocked: bool,
-    pub is_module: bool,
     pub scale: f32,
     // number of grid blocks it extends to
     pub size: Vec2,
@@ -136,7 +135,6 @@ impl DisplayState {
                 size,
                 name: "CLK".into(),
                 label: "CLK".into(),
-                is_module: false,
                 state_indicator_ref: Some(clk_id),
                 contents,
             },

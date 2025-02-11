@@ -5,7 +5,8 @@ use std::{
 
 use bsim_engine::circuit::BCircuit;
 use egui::{
-    pos2, Align, Button, Color32, Context, FontId, Label, Layout, Painter, Slider, Stroke, Ui,
+    pos2, scroll_area::ScrollBarVisibility, Align, Button, Color32, Context, FontId, Label, Layout,
+    Painter, ScrollArea, Sense, Slider, Stroke, Ui,
 };
 
 use crate::{
@@ -58,7 +59,7 @@ impl SimulatorUI {
         for name in available_comp_names {
             display_state
                 .top_bar_opts
-                .push(TopBarOption::AddComponent { name });
+                .push(TopBarOption::AddComponent { name, scale: 0.5 });
         }
         display_state
             .top_bar_opts
@@ -69,10 +70,17 @@ impl SimulatorUI {
             });
         display_state
             .top_bar_opts
-            .push(TopBarOption::AddModuleFromText {
-                typed_text: "3x8".into(),
+            .push(TopBarOption::AddModuleFromOptions {
+                label_text: "Add a decoder".into(),
                 modulator: Modulator::Decoder,
-                enter_text: "Add decoder".into(),
+                options: vec!["3x8".to_string(), "4x16".to_string()],
+            });
+        display_state
+            .top_bar_opts
+            .push(TopBarOption::AddModuleFromOptions {
+                label_text: "Add an encoder".into(),
+                modulator: Modulator::Encoder,
+                options: vec!["8x3".to_string(), "16x4".to_string()],
             });
         let sim = Self {
             ckt,
@@ -84,32 +92,38 @@ impl SimulatorUI {
     }
     fn ui(&mut self, ui: &mut Ui) {
         draw_bg(ui, &self.display_state.screen);
-        ui.horizontal(|ui| {
-            for opt in &mut self.display_state.top_bar_opts {
-                receive_evts!(self, opt.render(&mut self.ckt, ui));
-            }
 
-            // todo: move to settings
-            let clk_freq =
-                Slider::new(&mut self.display_state.clk_t, RangeInclusive::new(10, 1000));
-            let r = ui.add(clk_freq);
-            r.on_hover_text(format!(
-                "Clock toggles every {} frames.",
-                self.display_state.clk_t
-            ))
-        });
-        // print_screen(&display_state.screen);
-        self.draw_connections(&self.ckt, &self.display_state.wires, ui.painter());
+        ScrollArea::horizontal()
+            .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for opt in &mut self.display_state.top_bar_opts {
+                        receive_evts!(self, opt.render(&mut self.ckt, ui));
+                    }
+
+                    // todo: move to settings
+                    let clk_freq =
+                        Slider::new(&mut self.display_state.clk_t, RangeInclusive::new(10, 1000));
+                    let r = ui.add(clk_freq);
+                    r.on_hover_text(format!(
+                        "Clock toggles every {} frames.",
+                        self.display_state.clk_t
+                    ))
+                });
+            });
 
         ui.style_mut().text_styles.insert(
             egui::TextStyle::Body,
             FontId::new(8.0, egui::FontFamily::Monospace),
         );
 
-        receive_evts!(
-            self,
-            paint_components(&mut self.display_state, &self.ckt, ui)
-        );
+        ScrollArea::both().id_salt("Second").show(ui, |ui| {
+            self.draw_connections(&self.ckt, &self.display_state.wires, ui);
+            receive_evts!(
+                self,
+                paint_components(&mut self.display_state, &self.ckt, ui)
+            );
+        });
 
         ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
             let btn = Button::new(if self.display_state.sync.is_synced() {
@@ -132,8 +146,10 @@ impl SimulatorUI {
         &self,
         ckt: &BCircuit,
         wires: &HashMap<EmitterReceiverPair, Wire>,
-        pt: &Painter,
+        ui: &Ui,
     ) {
+        let pt = ui.painter();
+        let scroll_offset = ui.min_rect().min.to_vec2();
         for wire in wires.values() {
             let col = true_false_color!(
                 ckt.components()
@@ -143,7 +159,10 @@ impl SimulatorUI {
                     .state
             );
             pt.line(
-                wire.pts.iter().map(|k| *k * GRID_UNIT_SIZE).collect(),
+                wire.pts
+                    .iter()
+                    .map(|k| *k * GRID_UNIT_SIZE + scroll_offset)
+                    .collect(),
                 Stroke::new(wire.width, col),
             );
         }

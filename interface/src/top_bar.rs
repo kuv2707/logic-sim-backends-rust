@@ -5,7 +5,7 @@ use bsim_engine::{
     components::Gate,
     types::{ID, PIN},
 };
-use egui::{vec2, Button, TextEdit, Ui, Vec2, Widget};
+use egui::{vec2, Button, ComboBox, Id, TextEdit, Ui, Vec2, Widget};
 
 use crate::{
     app::SimulatorUI,
@@ -19,17 +19,24 @@ use crate::{
 pub enum TopBarOption {
     AddComponent {
         name: String,
+        scale: f32,
     },
     AddModuleFromText {
         typed_text: String,
         modulator: Modulator,
         enter_text: String,
     },
+    AddModuleFromOptions {
+        label_text: String,
+        options: Vec<String>,
+        modulator: Modulator,
+    },
 }
 
 pub enum Modulator {
     Expressions,
     Decoder,
+    Encoder,
 }
 
 impl Modulator {
@@ -67,6 +74,9 @@ impl Modulator {
                 }
                 "".to_string()
             }
+            Modulator::Encoder {} => {
+                todo!()
+            }
         }
     }
 }
@@ -75,7 +85,7 @@ impl TopBarOption {
     pub fn render(&mut self, ckt: &mut BCircuit, ui: &mut Ui) -> Vec<StateUpdateOps> {
         let mut update_ops = Vec::new();
         match self {
-            Self::AddComponent { name } => {
+            Self::AddComponent { name, scale } => {
                 let button = egui::Button::new(name.as_str()).min_size(Vec2::new(80.0, 40.0));
                 let response = button.ui(ui);
                 if response.clicked() {
@@ -83,7 +93,7 @@ impl TopBarOption {
                         "Input" => ckt.add_input("", false),
                         _ => ckt.add_component(name, "").unwrap(),
                     };
-                    let data = compose_comp_data(&ckt.get_component(&id).unwrap().borrow());
+                    let data = compose_comp_data(&ckt.get_component(&id).unwrap().borrow(), *scale);
 
                     update_ops.push(StateUpdateOps::UiOp(UiUpdateOps::AddComponent(data)));
                 }
@@ -112,12 +122,39 @@ impl TopBarOption {
                     }
                 });
             }
+            Self::AddModuleFromOptions {
+                label_text,
+                options,
+                modulator,
+            } => {
+                ComboBox::from_id_salt(Id::new(label_text.to_string()))
+                    .selected_text(label_text.to_string())
+                    .show_ui(ui, |ui| {
+                        for option in options {
+                            if ui.selectable_label(false, option.to_string()).clicked() {
+                                match get_disp_data_from_modctx(get_logic_unit(
+                                    ckt,
+                                    &modulator.modulate(option),
+                                )) {
+                                    Ok(data) => {
+                                        update_ops.push(StateUpdateOps::UiOp(
+                                            UiUpdateOps::AddComponent(data),
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        // todo: show msg that expr was bad
+                                    }
+                                }
+                            }
+                        }
+                    });
+            }
         }
         update_ops
     }
 }
 
-pub fn compose_comp_data(gate: &Gate) -> CompDisplayData {
+pub fn compose_comp_data(gate: &Gate, scale: f32) -> CompDisplayData {
     let loc = egui::pos2(40.0 + 80.0, 100.0) / GRID_UNIT_SIZE;
     let size: Vec2 = (8.0, 8.0).into();
     let spc = size.y / (gate.num_inputs()) as f32;
@@ -151,9 +188,8 @@ pub fn compose_comp_data(gate: &Gate) -> CompDisplayData {
         }],
         inputs_rel,
         is_clocked: gate.clock_manager.is_some(),
-        scale: DEFAULT_SCALE,
+        scale,
         size,
-        is_module: false,
         state_indicator_ref: Some(gate.id),
         contents,
     }
@@ -199,7 +235,6 @@ fn get_disp_data_from_modctx(
                     })
                     .collect(),
                 is_clocked: true, // todo
-                is_module: true,
                 scale: DEFAULT_SCALE,
                 size,
                 state_indicator_ref: None,

@@ -35,7 +35,7 @@ pub struct Gate {
     input_pin_values: Vec<bool>,
     pub input_pin_sources: Vec<ID>,
     pub input_pin_exprs: Vec<String>,
-
+    pub active: bool,
     pub state_expr: String,
     pub clock_manager: Option<ClockManager>,
 }
@@ -53,6 +53,7 @@ impl Gate {
             output_recvlist: HashSet::new(),
             n_inp,
             symbol: p.symbol.clone(),
+            active: p.comp_type != CompType::Combinational, // initially combinational elems are inactive
 
             // 0th pin is the clock pin
             input_pin_values: vec![false; n_inp],
@@ -134,7 +135,7 @@ impl Gate {
         self.set_pin_val(pin, emitter.state);
         self.input_pin_sources[pin as usize] = emitter.id;
         self.input_pin_exprs[pin as usize].push_str(&emitter.state_expr);
-
+        self.active = self.are_inputs_completely_connected();
         Ok(())
     }
     pub fn clear_input_pin_connection(&mut self, pin: PIN) -> Result<(), String> {
@@ -152,7 +153,7 @@ impl Gate {
         self.input_pin_values[pin] = false;
         self.input_pin_sources[pin] = NULL;
         self.input_pin_exprs[pin].clear();
-
+        self.active = self.are_inputs_completely_connected();
         Ok(())
     }
     pub(crate) fn set_pin_val(&mut self, pin: PIN, val: bool) {
@@ -206,7 +207,7 @@ fn state_update(
             }
         }
         None => {
-            if !c.are_inputs_completely_connected() {
+            if !c.active {
                 // a component is off until it is completely connected
                 false
             } else {
