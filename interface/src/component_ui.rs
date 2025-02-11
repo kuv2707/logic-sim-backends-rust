@@ -1,4 +1,4 @@
-use std::cmp::max;
+use std::{cell::RefCell, cmp::max};
 
 use bsim_engine::{
     circuit::BCircuit,
@@ -6,8 +6,8 @@ use bsim_engine::{
     types::{CompType, ID},
 };
 use egui::{
-    epaint::CubicBezierShape, vec2, Button, Color32, FontId, Id, Label, Painter, Pos2, Rect,
-    Response, Rounding, Sense, Stroke, TextEdit, Ui, Vec2,
+    ahash::HashMap, epaint::CubicBezierShape, pos2, vec2, Button, Color32, FontId, Id, Label,
+    Painter, Pos2, Rect, Response, Rounding, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 
 use crate::{
@@ -58,7 +58,7 @@ pub fn paint_component(
     let is_clk = disp_params.name == "CLK";
     let al = ui.allocate_rect(container, Sense::click_and_drag());
 
-    let gate = match &disp_params.state_indicator_ref {
+    let gate = match &disp_params.state_indicator_ref.first() {
         Some(id) => match ckt.components().get(id) {
             Some(g) => Some(g),
             None => None,
@@ -82,6 +82,7 @@ pub fn paint_component(
                 None => None, // grey it out if no state indicator ref
             },
             disp_params.scale,
+            ckt.components(),
         );
     }
 
@@ -152,7 +153,7 @@ pub fn paint_component(
         }
     }
 
-    if disp_params.scale >= DEFAULT_SCALE {
+    if disp_params.scale >= DEFAULT_SCALE && false {
         if !is_clk {
             let ted = TextEdit::singleline(&mut disp_params.label).hint_text("label");
             let min = container.left_top()
@@ -252,11 +253,13 @@ pub fn add_pin_btn(
         },
     );
     let mut al = ui.allocate_rect(brect, Sense::click_and_drag());
-    if expr.len() > 0 {
+    if pin.label.len() > 0 {
         ui.put(
             Rect::from_min_size(brect.min + vec2(PIN_BTN_SIZE, 0.), vec2(10.0, 10.0)),
             Label::new(&pin.label),
         );
+    }
+    if expr.len() > 0 {
         al = al.on_hover_text(expr);
     }
     let res = ui.interact(brect, al.id, Sense::click_and_drag());
@@ -273,10 +276,11 @@ fn is_option_alt_pressed(ui: &Ui) -> bool {
 
 fn draw_component_shape(
     painter: &Painter,
-    disp_params: &CompDisplayData,
+    disp_data: &CompDisplayData,
     container: Rect,
     state: Option<bool>,
     scale: f32,
+    ckt_comps: &std::collections::HashMap<ID, RefCell<Gate>>,
 ) {
     let color = match state {
         Some(state) => {
@@ -289,7 +293,7 @@ fn draw_component_shape(
         None => false, // when drawing a module
     };
     let stroke = Stroke::new(2.0, color);
-    let name = disp_params.name.as_str();
+    let name = disp_data.name.as_str();
     match name {
         "Input" => {
             let mut pts: Vec<Pos2> = vec![
@@ -302,7 +306,7 @@ fn draw_component_shape(
                 (0., 6.0).into(),
             ];
             pts.push(pts[0]);
-            draw_path(painter, pts, stroke, scale, container, state);
+            draw_path(painter, pts, stroke, scale, container);
         }
         "NOT" | "BFR" => {
             let pts: Vec<Pos2> = vec![
@@ -314,7 +318,7 @@ fn draw_component_shape(
                 (0., 8.0).into(),
                 (0., 4.0).into(),
             ];
-            draw_path(painter, pts, stroke, scale, container, state);
+            draw_path(painter, pts, stroke, scale, container);
             if name == "NOT" {
                 painter.circle(
                     container.left_top()
@@ -347,7 +351,6 @@ fn draw_component_shape(
                 stroke,
                 scale,
                 container,
-                state,
             );
 
             if name == "NAND" {
@@ -363,6 +366,35 @@ fn draw_component_shape(
                 );
             }
         }
+        "7Segment" => {
+            painter.rect_filled(container, 8.0, Color32::BLACK);
+            let segs = vec![
+                vec![pos2(-4.0, -9.0), pos2(4.0, -9.0)],  //  -
+                vec![pos2(4.0, -8.0), pos2(4.0, -1.0)],   //   |
+                vec![pos2(4.0, 0.0), pos2(4.0, 8.0)],     //   |
+                vec![pos2(-4.0, 9.0), pos2(4.0, 9.0)],    //  _
+                vec![pos2(-4.0, 0.0), pos2(-4.0, 8.0)],   // |
+                vec![pos2(-4.0, -8.0), pos2(-4.0, -1.0)], // |
+                vec![pos2(-3.0, -0.5), pos2(3.0, -0.5)],  //  -
+            ];
+            let mut i = 0;
+            for out in &disp_data.outputs_rel {
+                let state = ckt_comps.get(&out.id).unwrap().borrow().state;
+                painter.line(
+                    segs[i]
+                        .iter()
+                        .map(|v| {
+                            *v * GRID_UNIT_SIZE * disp_data.scale + container.center().to_vec2()
+                        })
+                        .collect(),
+                    Stroke::new(
+                        GRID_UNIT_SIZE,
+                        if state { GREEN_COL } else { Color32::DARK_GRAY },
+                    ),
+                );
+                i += 1;
+            }
+        }
         _ => {
             painter.rect_filled(container, 8.0, true_false_color!(state));
         }
@@ -370,14 +402,7 @@ fn draw_component_shape(
     // painter.rect_stroke(container, 8.0, Stroke::new(2.0, Color32::BLACK));
 }
 
-fn draw_path(
-    painter: &Painter,
-    pts: Vec<Pos2>,
-    stroke: Stroke,
-    scale: f32,
-    container: Rect,
-    state: bool,
-) {
+fn draw_path(painter: &Painter, pts: Vec<Pos2>, stroke: Stroke, scale: f32, container: Rect) {
     // todo: optionally fill with a color.
     painter.line(
         pts.iter()

@@ -37,13 +37,14 @@ pub enum Modulator {
     Expressions,
     Decoder,
     Encoder,
+    SevenSegment,
 }
 
 impl Modulator {
-    pub fn modulate(&self, s: &str) -> String {
+    pub fn pre_modulate(&self, s: &str) -> String {
         match self {
-            Modulator::Expressions => s.to_string(),
-            Modulator::Decoder => {
+            Self::Expressions => s.to_string(),
+            Self::Decoder => {
                 // todo: use regex
                 let parts: Vec<&str> = s.split('x').collect();
                 if parts.len() == 2 {
@@ -74,9 +75,25 @@ impl Modulator {
                 }
                 "".to_string()
             }
-            Modulator::Encoder {} => {
+            Self::Encoder {} => {
                 todo!()
             }
+            Self::SevenSegment {} => "a=a;b=b;c=c;d=d;e=e;f=f;g=g;".into(),
+        }
+    }
+    pub fn post_modulate(&self, data: &mut CompDisplayData) {
+        match self {
+            Self::SevenSegment {} => {
+                data.size.x = 12.0;
+                data.size.y = 20.0;
+                for k in data.outputs_rel.iter_mut() {
+                    k.loc_rel.x = data.size.x;
+                }
+                data.name = "7Segment".into();
+            }
+            Modulator::Expressions => {}
+            Modulator::Decoder => {}
+            Modulator::Encoder => {}
         }
     }
 }
@@ -108,9 +125,10 @@ impl TopBarOption {
                     if ui.add(Button::new(enter_text.as_str())).clicked() {
                         match get_disp_data_from_modctx(get_logic_unit(
                             ckt,
-                            &modulator.modulate(typed_text),
+                            &modulator.pre_modulate(typed_text),
                         )) {
-                            Ok(data) => {
+                            Ok(mut data) => {
+                                modulator.post_modulate(&mut data);
                                 update_ops
                                     .push(StateUpdateOps::UiOp(UiUpdateOps::AddComponent(data)));
                             }
@@ -134,9 +152,10 @@ impl TopBarOption {
                             if ui.selectable_label(false, option.to_string()).clicked() {
                                 match get_disp_data_from_modctx(get_logic_unit(
                                     ckt,
-                                    &modulator.modulate(option),
+                                    &modulator.pre_modulate(option),
                                 )) {
-                                    Ok(data) => {
+                                    Ok(mut data) => {
+                                        modulator.post_modulate(&mut data);
                                         update_ops.push(StateUpdateOps::UiOp(
                                             UiUpdateOps::AddComponent(data),
                                         ));
@@ -190,7 +209,7 @@ pub fn compose_comp_data(gate: &Gate, scale: f32) -> CompDisplayData {
         is_clocked: gate.clock_manager.is_some(),
         scale,
         size,
-        state_indicator_ref: Some(gate.id),
+        state_indicator_ref: vec![gate.id],
         contents,
     }
 }
@@ -237,7 +256,7 @@ fn get_disp_data_from_modctx(
                 is_clocked: true, // todo
                 scale: DEFAULT_SCALE,
                 size,
-                state_indicator_ref: None,
+                state_indicator_ref: vec![],
                 contents,
             };
             Ok(data)

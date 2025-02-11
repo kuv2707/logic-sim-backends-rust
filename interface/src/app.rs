@@ -71,17 +71,25 @@ impl SimulatorUI {
         display_state
             .top_bar_opts
             .push(TopBarOption::AddModuleFromOptions {
-                label_text: "Add a decoder".into(),
+                label_text: "Decoders".into(),
                 modulator: Modulator::Decoder,
                 options: vec!["3x8".to_string(), "4x16".to_string()],
             });
         display_state
             .top_bar_opts
             .push(TopBarOption::AddModuleFromOptions {
-                label_text: "Add an encoder".into(),
+                label_text: "Encoders".into(),
                 modulator: Modulator::Encoder,
                 options: vec!["8x3".to_string(), "16x4".to_string()],
             });
+        display_state
+            .top_bar_opts
+            .push(TopBarOption::AddModuleFromOptions {
+                label_text: "7 Segment".into(),
+                modulator: Modulator::SevenSegment,
+                options: vec!["Default".to_string()],
+            });
+
         let sim = Self {
             ckt,
             display_state,

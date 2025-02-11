@@ -17,7 +17,7 @@ pub fn qm_simplify_one(t: &Table<char>, inps: &Vec<&str>, out: &str) -> String {
     let mut grp = grp_by_ones(t, inps, out);
     let mut unpaired = HashSet::<(u16, usize)>::new();
     let mut prime_implicants = HashSet::new();
-    
+
     loop {
         let mut nxt_grp_table: BTreeMap<u16, Vec<(Vec<u16>, Vec<char>)>> = BTreeMap::new();
         // mark all rows as unpaired
@@ -73,17 +73,19 @@ pub fn qm_simplify_one(t: &Table<char>, inps: &Vec<&str>, out: &str) -> String {
     prime_implicants
         .iter()
         .map(|v| {
-            let mut exp = String::new();
+            let mut exp = Vec::new();
             let ins = &v.1;
             for i in 0..inps.len() {
                 if ins[i] == DONT_CARE {
                     continue;
                 }
-                exp.push_str(
-                    format!("{}{}", if ins[i] == '0' { "!" } else { "" }, inps[i]).as_str(),
-                );
+                exp.push(format!(
+                    "{}{}",
+                    if ins[i] == '0' { "!" } else { "" },
+                    inps[i]
+                ));
             }
-            exp
+            exp.join(".")
         })
         .collect::<Vec<String>>()
         .join("+")
@@ -179,4 +181,41 @@ fn grp_by_ones(
         }
     }
     grps
+}
+
+mod tests {
+    use crate::table::Table;
+
+    use super::qm_simplify_many;
+
+    #[test]
+    fn qm() {
+        let mut tt = Table::<char>::new();
+        tt.set_columns(
+            vec!["A", "B", "C", "D", "a", "b", "c", "d", "e", "f", "g"]
+                .iter()
+                .map(|v| v.to_string())
+                .collect(),
+        )
+        .unwrap();
+        let rows = vec![
+            vec!['0', '0', '0', '0', '1', '1', '1', '1', '1', '1', '0'], // 0
+            vec!['0', '0', '0', '1', '0', '1', '1', '0', '0', '0', '0'], // 1
+            vec!['0', '0', '1', '0', '1', '1', '0', '1', '1', '0', '1'], // 2
+            vec!['0', '0', '1', '1', '1', '1', '1', '1', '0', '0', '1'], // 3
+            vec!['0', '1', '0', '0', '0', '1', '1', '0', '0', '1', '1'], // 4
+            vec!['0', '1', '0', '1', '1', '0', '1', '1', '0', '1', '1'], // 5
+            vec!['0', '1', '1', '0', '1', '0', '1', '1', '1', '1', '1'], // 6
+            vec!['0', '1', '1', '1', '1', '1', '1', '0', '0', '0', '0'], // 7
+            vec!['1', '0', '0', '0', '1', '1', '1', '1', '1', '1', '1'], // 8
+            vec!['1', '0', '0', '1', '1', '1', '1', '1', '0', '1', '1'], // 9
+        ];
+
+        tt.set_rows(rows).unwrap();
+        let outs = vec!["a", "b", "c", "d", "e", "f", "g"];
+        let res = qm_simplify_many(&tt, &vec!["A", "B", "C", "D"], &outs);
+        for i in 0..outs.len() {
+            println!("{} = {};", outs[i], res[i]);
+        }
+    }
 }

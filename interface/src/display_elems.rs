@@ -82,7 +82,7 @@ pub struct CompDisplayData {
     pub scale: f32,
     // number of grid blocks it extends to
     pub size: Vec2,
-    pub state_indicator_ref: Option<ID>, // the color of this module (red/green) is decided by this ID
+    pub state_indicator_ref: Vec<ID>, // the color of this module (red/green) is decided by this ID
     pub contents: HashSet<ID>,
 }
 
@@ -135,7 +135,7 @@ impl DisplayState {
                 size,
                 name: "CLK".into(),
                 label: "CLK".into(),
-                state_indicator_ref: Some(clk_id),
+                state_indicator_ref: vec![clk_id],
                 contents,
             },
         );
